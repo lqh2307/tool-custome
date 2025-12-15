@@ -8,17 +8,17 @@ ARG PREFIX_DIR=/usr/local/opt
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get upgrade -y \
 	&& apt-get install -y \
-      build-essential \
-      cmake \
-      liblua5.4-dev \
-      libsqlite3-dev \
-      libshp-dev \
-      libboost-program-options-dev \
-      libboost-filesystem-dev \
-      libboost-system-dev \
-      rapidjson-dev \
-      luarocks \
-  && luarocks install luaflock \
+		build-essential \
+    	cmake \
+    	liblua5.4-dev \
+    	libsqlite3-dev \
+    	libshp-dev \
+    	libboost-program-options-dev \
+    	libboost-filesystem-dev \
+    	libboost-system-dev \
+    	rapidjson-dev \
+    	luarocks \
+	&& luarocks install luaflock \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -27,15 +27,15 @@ COPY ./tilemaker/tilemaker.tar.gz .
 
 RUN tar -xzf ./tilemaker.tar.gz \
 	&& cd ./tilemaker \
-  && mkdir -p ./build \
-  && cd ./build \
-  && cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/tilemaker \
-  && cmake --build . --parallel $(nproc) \
-  && cmake --build . --target install \
-  && cd ../.. \
-  && rm -rf ./tilemaker*
+	&& mkdir -p ./build \
+	&& cd ./build \
+	&& cmake .. \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/tilemaker \
+	&& cmake --build . --parallel $(nproc) \
+	&& cmake --build . --target install \
+	&& cd ../.. \
+	&& rm -rf ./tilemaker*
 
 
 FROM ${BUILDER_IMAGE} AS osmium-tool-builder
@@ -45,17 +45,17 @@ ARG PREFIX_DIR=/usr/local/opt
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get upgrade -y \
 	&& apt-get install -y \
-      build-essential \
-      cmake \
-			libosmium2-dev \
-			libprotozero-dev \
-			nlohmann-json3-dev \
-			libboost-program-options-dev \
-			libbz2-dev \
-			zlib1g-dev \
-			liblz4-dev \
-			libexpat1-dev \
-			pandoc \
+		build-essential \
+		cmake \
+		libosmium2-dev \
+		libprotozero-dev \
+		nlohmann-json3-dev \
+		libboost-program-options-dev \
+		libbz2-dev \
+		zlib1g-dev \
+		liblz4-dev \
+		libexpat1-dev \
+		pandoc \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -64,15 +64,15 @@ COPY ./osmium-tool/osmium-tool.tar.gz .
 
 RUN tar -xzf ./osmium-tool.tar.gz \
 	&& cd ./osmium-tool \
-  && mkdir -p ./build \
-  && cd ./build \
-  && cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
-  && cmake --build . --parallel $(nproc) \
-  && cmake --build . --target install \
-  && cd ../.. \
-  && rm -rf ./osmium-tool*
+	&& mkdir -p ./build \
+	&& cd ./build \
+	&& cmake .. \
+    	-DCMAKE_BUILD_TYPE=Release \
+    	-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
+	&& cmake --build . --parallel $(nproc) \
+	&& cmake --build . --target install \
+	&& cd ../.. \
+	&& rm -rf ./osmium-tool*
 
 
 FROM ${BUILDER_IMAGE} AS gdal-builder
@@ -105,7 +105,7 @@ RUN tar -xzf ./gdal.tar.gz \
 	&& cd ./build \
 	&& cmake .. \
 		-DCMAKE_BUILD_TYPE=Release \
-	  -DCMAKE_INSTALL_RPATH='$ORIGIN/../lib' \
+		-DCMAKE_INSTALL_RPATH='$ORIGIN/../lib' \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/gdal \
 	&& cmake --build . --parallel $(nproc) \
 	&& cmake --build . --target install \
@@ -119,13 +119,15 @@ ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
-    liblua5.4-0 \
-    shapelib \
-    libsqlite3-0 \
-    lua-sql-sqlite3 \
-    libboost-filesystem1.83.0 \
-    libboost-program-options1.83.0 \
-    libboost-system1.83.0 \
+		python3 \
+		python3-pip \
+    	liblua5.4-0 \
+    	shapelib \
+    	libsqlite3-0 \
+    	lua-sql-sqlite3 \
+    	libboost-filesystem1.83.0 \
+    	libboost-program-options1.83.0 \
+    	libboost-system1.83.0 \
 		libosmium2-dev \
 		libprotozero-dev \
 		nlohmann-json3-dev \
@@ -142,6 +144,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libgif7 \
 		libwebp7 \
 		libtiff6 \
+	&& pip3 install rio-rgbify \
+	&& pip3 cache purge \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
