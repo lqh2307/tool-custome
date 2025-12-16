@@ -25,10 +25,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY ./gdal.tar.gz .
+COPY ./gdal .
 
-RUN tar -xzf ./gdal.tar.gz \
-	&& cd ./gdal \
+RUN cd ./gdal \
 	&& mkdir -p ./build \
 	&& cd ./build \
 	&& cmake .. \

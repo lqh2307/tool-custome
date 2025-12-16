@@ -9,24 +9,23 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get upgrade -y \
 	&& apt-get install -y \
 		build-essential \
-    	cmake \
-    	liblua5.4-dev \
-    	libsqlite3-dev \
-    	libshp-dev \
-    	libboost-program-options-dev \
-    	libboost-filesystem-dev \
-    	libboost-system-dev \
-    	rapidjson-dev \
-    	luarocks \
+		cmake \
+		liblua5.4-dev \
+		libsqlite3-dev \
+		libshp-dev \
+		libboost-program-options-dev \
+		libboost-filesystem-dev \
+		libboost-system-dev \
+		rapidjson-dev \
+		luarocks \
 	&& luarocks install luaflock \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY ./tilemaker/tilemaker.tar.gz .
+COPY ./tilemaker/tilemaker .
 
-RUN tar -xzf ./tilemaker.tar.gz \
-	&& cd ./tilemaker \
+RUN cd ./tilemaker \
 	&& mkdir -p ./build \
 	&& cd ./build \
 	&& cmake .. \
@@ -35,7 +34,7 @@ RUN tar -xzf ./tilemaker.tar.gz \
 	&& cmake --build . --parallel $(nproc) \
 	&& cmake --build . --target install \
 	&& cd ../.. \
-	&& rm -rf ./tilemaker*
+	&& rm -rf ./tilemaker
 
 
 FROM ${BUILDER_IMAGE} AS osmium-tool-builder
@@ -60,19 +59,18 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY ./osmium-tool/osmium-tool.tar.gz .
+COPY ./osmium-tool/osmium-tool .
 
-RUN tar -xzf ./osmium-tool.tar.gz \
-	&& cd ./osmium-tool \
+RUN cd ./osmium-tool \
 	&& mkdir -p ./build \
 	&& cd ./build \
 	&& cmake .. \
-    	-DCMAKE_BUILD_TYPE=Release \
-    	-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
 	&& cmake --build . --parallel $(nproc) \
 	&& cmake --build . --target install \
 	&& cd ../.. \
-	&& rm -rf ./osmium-tool*
+	&& rm -rf ./osmium-tool
 
 
 FROM ${BUILDER_IMAGE} AS gdal-builder
@@ -97,10 +95,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY ./gdal/gdal.tar.gz .
+COPY ./gdal/gdal .
 
-RUN tar -xzf ./gdal.tar.gz \
-	&& cd ./gdal \
+RUN cd ./gdal \
 	&& mkdir -p ./build \
 	&& cd ./build \
 	&& cmake .. \
@@ -110,7 +107,7 @@ RUN tar -xzf ./gdal.tar.gz \
 	&& cmake --build . --parallel $(nproc) \
 	&& cmake --build . --target install \
  	&& cd ../.. \
- 	&& rm -rf ./gdal*
+ 	&& rm -rf ./gdal
 
 
 FROM ${TARGET_IMAGE} AS final
@@ -121,13 +118,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
 		python3 \
 		python3-pip \
-    	liblua5.4-0 \
-    	shapelib \
-    	libsqlite3-0 \
-    	lua-sql-sqlite3 \
-    	libboost-filesystem1.83.0 \
-    	libboost-program-options1.83.0 \
-    	libboost-system1.83.0 \
+		liblua5.4-0 \
+		shapelib \
+		libsqlite3-0 \
+		lua-sql-sqlite3 \
+		libboost-filesystem1.83.0 \
+		libboost-program-options1.83.0 \
+		libboost-system1.83.0 \
 		libosmium2-dev \
 		libprotozero-dev \
 		nlohmann-json3-dev \
@@ -136,7 +133,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		liblz4-1 \
 		libexpat1 \
 		osmosis \
-  		libproj25 \
+		libproj25 \
 		librasterlite2-1 \
 		libspatialite8 \
 		libpng16-16 \
