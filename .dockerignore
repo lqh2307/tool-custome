@@ -1,4 +1,5 @@
 *
-!tilemaker/tilemaker.tar.gz
-!osmium-tool/osmium-tool.tar.gz
-!gdal/gdal.tar.gz
+!tilemaker/tilemaker
+!osmium-tool/osmium-tool
+!osmosis/osmosis
+!gdal/gdal
