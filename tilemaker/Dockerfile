@@ -27,16 +27,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 
 COPY ./tilemaker .
 
-RUN cd ./tilemaker \
-  && mkdir -p ./build \
+RUN mkdir -p ./build \
   && cd ./build \
   && cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/tilemaker \
   && cmake --build . --parallel $(nproc) \
-  && cmake --build . --target install \
-  && cd ../.. \
-  && rm -rf ./tilemaker*
+  && cmake --build . --target install
 
 
 FROM ${TARGET_IMAGE} AS final

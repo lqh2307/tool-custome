@@ -27,16 +27,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 
 COPY ./osmium-tool .
 
-RUN cd ./osmium-tool \
-  && mkdir -p ./build \
+RUN mkdir -p ./build \
   && cd ./build \
   && cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
   && cmake --build . --parallel $(nproc) \
-  && cmake --build . --target install \
-  && cd ../.. \
-  && rm -rf ./osmium-tool*
+  && cmake --build . --target install
 
 
 FROM ${TARGET_IMAGE} AS final

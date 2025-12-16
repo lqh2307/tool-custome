@@ -23,7 +23,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY ./tilemaker/tilemaker .
+COPY ./tilemaker .
 
 RUN cd ./tilemaker \
 	&& mkdir -p ./build \
@@ -59,7 +59,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY ./osmium-tool/osmium-tool .
+COPY ./osmium-tool .
 
 RUN cd ./osmium-tool \
 	&& mkdir -p ./build \
@@ -95,7 +95,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY ./gdal/gdal .
+COPY ./gdal .
 
 RUN cd ./gdal \
 	&& mkdir -p ./build \
@@ -116,8 +116,7 @@ ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
-		python3 \
-		python3-pip \
+		pipx \
 		liblua5.4-0 \
 		shapelib \
 		libsqlite3-0 \
@@ -141,17 +140,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libgif7 \
 		libwebp7 \
 		libtiff6 \
-	&& pip3 install rio-rgbify \
-	&& pip3 cache purge \
+	&& pipx install rio-rgbify --include-deps \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
-	&& rm -rf /var/lib/apt/lists/*
+	&& rm -rf ~/.cache/pip /var/lib/apt/lists/*
 
 COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=osmium-tool-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
 
-ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/osmium-tool/bin:${PREFIX_DIR}/gdal/bin:${PATH}
+ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/osmium-tool/bin:${PREFIX_DIR}/gdal/bin:/root/.local/bin:${PATH}
 
 VOLUME /data
 

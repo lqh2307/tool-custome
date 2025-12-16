@@ -27,17 +27,14 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 
 COPY ./gdal .
 
-RUN cd ./gdal \
-	&& mkdir -p ./build \
+RUN mkdir -p ./build \
 	&& cd ./build \
 	&& cmake .. \
 		-DCMAKE_BUILD_TYPE=Release \
 	  -DCMAKE_INSTALL_RPATH='$ORIGIN/../lib' \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/gdal \
 	&& cmake --build . --parallel $(nproc) \
-	&& cmake --build . --target install \
- 	&& cd ../.. \
- 	&& rm -rf ./gdal*
+	&& cmake --build . --target install
 
 
 FROM ${TARGET_IMAGE} AS final
