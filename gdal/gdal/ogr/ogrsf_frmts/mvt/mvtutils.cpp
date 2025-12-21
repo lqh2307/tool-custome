@@ -61,6 +61,27 @@ void OGRMVTInitFields(OGRFeatureDefn *poFeatureDefn,
                             {
                                 oFieldDefn.SetType(OFTInteger64);
                             }
+                            if (oFieldDefn.GetType() != OFTReal)
+                            {
+                                const auto oValues =
+                                    oAttributesFromTileStats[i].GetObj(
+                                        "values");
+                                if (oValues.GetType() ==
+                                    CPLJSONObject::Type::Array)
+                                {
+                                    const auto oValuesArray = oValues.ToArray();
+                                    for (int iVal = 0;
+                                         iVal < oValuesArray.Size(); ++iVal)
+                                    {
+                                        if (oValuesArray[iVal].GetType() ==
+                                            CPLJSONObject::Type::Double)
+                                        {
+                                            oFieldDefn.SetType(OFTReal);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                             break;
                         }
                     }
@@ -172,7 +193,8 @@ OGRMVTFindAttributesFromTileStat(const CPLJSONArray &oTileStatLayers,
 
 OGRFeature *OGRMVTCreateFeatureFrom(OGRFeature *poSrcFeature,
                                     OGRFeatureDefn *poTargetFeatureDefn,
-                                    bool bJsonField, OGRSpatialReference *poSRS)
+                                    bool bJsonField,
+                                    const OGRSpatialReference *poSRS)
 {
     OGRFeature *poFeature = new OGRFeature(poTargetFeatureDefn);
     if (bJsonField)
@@ -184,7 +206,7 @@ OGRFeature *OGRMVTCreateFeatureFrom(OGRFeature *poSrcFeature,
             if (poSrcFeature->IsFieldSet(i))
             {
                 bEmpty = false;
-                OGRFieldDefn *poFDefn = poSrcFeature->GetFieldDefnRef(i);
+                const OGRFieldDefn *poFDefn = poSrcFeature->GetFieldDefnRef(i);
                 if (poSrcFeature->IsFieldNull(i))
                 {
                     oProperties.AddNull(poFDefn->GetNameRef());

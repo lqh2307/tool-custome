@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALADDO" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDALADDO" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdaladdo \- Builds or rebuilds overview images.
 .SH SYNOPSIS
@@ -123,9 +123,6 @@ Dataset open option (format specific)
 .B \-minsize <val>
 Maximum width or height of the smallest overview level. Only taken into
 account if explicit levels are not specified. Defaults to 256.
-.sp
-Added in version 2.3.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -177,15 +174,17 @@ The file to build overviews for (or whose overviews must be removed).
 .TP
 .B <levels>
 A list of integral overview levels to build. Ignored with \fI\%\-clean\fP option.
-.sp
-Added in version 2.3: Levels are no longer required to build overviews.
+.INDENT 7.0
+.INDENT 3.5
+Levels are no longer required to build overviews.
 In which case, appropriate overview power\-of\-two factors will be selected
 until the smallest overview is smaller than the value of the \-minsize switch.
 .sp
 Starting with GDAL 3.9, if there are already existing overviews, the
 corresponding levels will be used to refresh them if no explicit levels
 are specified.
-
+.UNINDENT
+.UNINDENT
 .UNINDENT
 .sp
 gdaladdo will honour properly NODATA_VALUES tuples (special dataset metadata) so
@@ -271,7 +270,7 @@ External overviews can be created in the BigTIFF format by using
 the \fI\%BIGTIFF_OVERVIEW\fP configuration option:
 \fB\-\-config BIGTIFF_OVERVIEW {IF_NEEDED|IF_SAFER|YES|NO}\fP\&.
 .sp
-The default value is IF_SAFER starting with GDAL 2.3.0 (previously was IF_NEEDED).
+The default value is IF_SAFER.
 The behavior of this option is exactly the same as the BIGTIFF creation option
 documented in the GeoTIFF driver documentation.
 .INDENT 0.0
@@ -364,7 +363,7 @@ gdaladdo \-r average abc.tif 2 4 8 16
 .INDENT 3.5
 .sp
 .EX
-gdaladdo \-ro \-\-config COMPRESS_OVERVIEW DEFLATE erdas.img 2 4 8 16
+gdaladdo \-ro \-\-config COMPRESS_OVERVIEW=YES erdas.img 2 4 8 16
 .EE
 .UNINDENT
 .UNINDENT
@@ -376,8 +375,8 @@ force the generation of external overview.
 .INDENT 3.5
 .sp
 .EX
-gdaladdo \-\-config COMPRESS_OVERVIEW JPEG \-\-config PHOTOMETRIC_OVERVIEW YCBCR
-         \-\-config INTERLEAVE_OVERVIEW PIXEL rgb_dataset.ext 2 4 8 16
+gdaladdo \-\-config COMPRESS_OVERVIEW=JPEG \-\-config PHOTOMETRIC_OVERVIEW=YCBCR
+         \-\-config INTERLEAVE_OVERVIEW=PIXEL rgb_dataset.ext 2 4 8 16
 .EE
 .UNINDENT
 .UNINDENT
@@ -386,7 +385,7 @@ gdaladdo \-\-config COMPRESS_OVERVIEW JPEG \-\-config PHOTOMETRIC_OVERVIEW YCBCR
 .INDENT 3.5
 .sp
 .EX
-gdaladdo \-\-config USE_RRD YES airphoto.jpg 3 9 27 81
+gdaladdo \-\-config USE_RRD=YES airphoto.jpg 3 9 27 81
 .EE
 .UNINDENT
 .UNINDENT

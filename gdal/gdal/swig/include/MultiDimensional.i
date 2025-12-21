@@ -179,6 +179,7 @@ public:
 %clear char **;
 
 %newobject CreateGroup;
+%feature ("kwargs") CreateGroup;
   GDALGroupHS *CreateGroup( const char *name,
                             char **options = 0 ) {
     return GDALGroupCreateGroup(self, name, options);
@@ -190,12 +191,13 @@ public:
   }
 
 %newobject CreateDimension;
+%feature ("kwargs") CreateDimension;
   GDALDimensionHS *CreateDimension( const char *name,
-                                    const char* type,
+                                    const char* dim_type,
                                     const char* direction,
                                     GUIntBig size,
                                     char **options = 0 ) {
-    return GDALGroupCreateDimension(self, name, type, direction, size, options);
+    return GDALGroupCreateDimension(self, name, dim_type, direction, size, options);
   }
 
 #if defined(SWIGPYTHON) || defined(SWIGJAVA)
@@ -220,7 +222,11 @@ public:
   }
 
 %newobject CreateAttribute;
+#if defined(SWIGCSHARP)
+%apply GUIntBig PINNED[] {GUIntBig *sizes};
+#else
 %apply (int nList, GUIntBig *pList) {(int dimensions, GUIntBig *sizes)};
+#endif
   GDALAttributeHS *CreateAttribute( const char *name,
                                     int dimensions,
                                     GUIntBig *sizes,
@@ -245,6 +251,20 @@ public:
   GDALGroupHS *SubsetDimensionFromSelection( const char *selection,
                                              char **options = 0 ) {
     return GDALGroupSubsetDimensionFromSelection(self, selection, options);
+  }
+
+  size_t GetDataTypeCount() {
+    return GDALGroupGetDataTypeCount(self);
+  }
+
+%newobject GetDataType;
+  GDALExtendedDataTypeHS* GetDataType(size_t idx) {
+    if (idx >= GDALGroupGetDataTypeCount(self))
+    {
+        CPLError(CE_Failure, CPLE_AppDefined, "GetDataType(): invalid index");
+        return NULL;
+    }
+    return GDALGroupGetDataType(self, idx);
   }
 
 } /* extend */
@@ -285,6 +305,57 @@ struct Statistics
   }
 } /* extend */
 } /* Statistics */ ;
+#endif
+
+#ifdef SWIGPYTHON
+
+%rename (RawBlockInfo) GDALMDArrayRawBlockInfo;
+
+struct GDALMDArrayRawBlockInfo
+{
+%extend {
+
+  ~GDALMDArrayRawBlockInfo() {
+    GDALMDArrayRawBlockInfoRelease(self);
+  }
+
+  GUIntBig GetOffset() {
+      return self->nOffset;
+  }
+
+  GUIntBig GetSize() {
+      return self->nSize;
+  }
+
+  const char* GetFilename() {
+    return self->pszFilename;
+  }
+
+  %apply (char **options) {char **};
+  char** GetInfo() {
+      return self->papszInfo;
+  }
+  %clear char**;
+
+  void GetInlineData( size_t *nLen, char **pBuf )
+  {
+      if (self->pabyInlineData )
+      {
+          *nLen = self->nSize;
+          *pBuf = reinterpret_cast<char*>(self->pabyInlineData);
+          self->pabyInlineData = NULL;
+      }
+      else
+      {
+          *nLen = 0;
+          *pBuf = NULL;
+      }
+  }
+
+
+} /* extend */
+} /* GDALMDArrayRawBlockInfo */ ;
+
 #endif
 
 //************************************************************************
@@ -498,7 +569,11 @@ public:
   }
 %clear char **;
 
+#if defined(SWIGCSHARP)
+%apply GUIntBig PINNED[] {GUIntBig* newSizes};
+#else
 %apply (int nList, GUIntBig* pList) {(int newDimensions, GUIntBig* newSizes)};
+#endif
   CPLErr Resize( int newDimensions, GUIntBig* newSizes, char** options = NULL ) {
     if( static_cast<size_t>(newDimensions) != GDALMDArrayGetDimensionCount(self) )
     {
@@ -508,7 +583,11 @@ public:
     }
     return GDALMDArrayResize( self, newSizes, options ) ? CE_None : CE_Failure;
   }
+#if defined(SWIGCSHARP)
+%clear GUIntBig* newSizes;
+#else
 %clear (int newDimensions, GUIntBig* newSizes);
+#endif
 
 #if defined(SWIGPYTHON)
 %apply Pointer NONNULL {GDALExtendedDataTypeHS* buffer_datatype};
@@ -853,7 +932,11 @@ public:
 #endif
 
 %newobject CreateAttribute;
+#if defined(SWIGCSHARP)
+%apply GUIntBig PINNED[] {GUIntBig *sizes};
+#else
 %apply (int nList, GUIntBig *pList) {(int dimensions, GUIntBig *sizes)};
+#endif
   GDALAttributeHS *CreateAttribute( const char *name,
                                     int dimensions,
                                     GUIntBig *sizes,
@@ -1048,7 +1131,11 @@ public:
   }
 
 %newobject Transpose;
+#if defined(SWIGCSHARP)
+%apply int PINNED[] {int* mapInts};
+#else
 %apply (int nList, int* pList) { (int axisMap, int* mapInts) };
+#endif
   GDALMDArrayHS* Transpose(int axisMap, int* mapInts)
   {
     return GDALMDArrayTranspose(self, axisMap, mapInts);
@@ -1086,6 +1173,27 @@ public:
   {
     return (GDALDatasetShadow*)GDALMDArrayAsClassicDatasetEx(self, iXDim, iYDim, hRootGroup, options);
   }
+
+#ifdef SWIGPYTHON
+%apply (int nList, GUIntBig* pList) {(int nDims, GUIntBig *block_coordinates)};
+%newobject GetRawBlockInfo;
+  GDALMDArrayRawBlockInfo* GetRawBlockInfo( int nDims, GUIntBig* block_coordinates )
+  {
+      if (static_cast<size_t>(nDims) != GDALMDArrayGetDimensionCount(self) )
+      {
+          CPLError(CE_Failure, CPLE_AppDefined,
+                   "Invalid number of values in block_coordinates argument");
+          return NULL;
+      }
+      GDALMDArrayRawBlockInfo* blockInfo = GDALMDArrayRawBlockInfoCreate();
+      if( !GDALMDArrayGetRawBlockInfo(self, reinterpret_cast<const uint64_t*>(block_coordinates), blockInfo) )
+      {
+          GDALMDArrayRawBlockInfoRelease(blockInfo);
+          blockInfo = NULL;
+      }
+      return blockInfo;
+  }
+#endif
 
 #ifndef SWIGCSHARP
 %newobject Statistics;
@@ -1439,7 +1547,6 @@ public:
 } /* extend */
 }; /* GDALDimensionH */
 
-
 //************************************************************************
 //
 // GDALExtendedDataTypeClass
@@ -1527,6 +1634,10 @@ public:
     return GDALExtendedDataTypeGetSubType(self);
   }
 
+  GDALRasterAttributeTableShadow* GetRAT() {
+    return GDALExtendedDataTypeGetRAT(self);
+  }
+
 #if defined(SWIGPYTHON)
   void GetComponents( GDALEDTComponentHS*** pcomps, size_t* pnCount ) {
     *pcomps = GDALExtendedDataTypeGetComponents(self, pnCount);
@@ -1550,7 +1661,7 @@ public:
 
 //************************************************************************
 //
-// GDALExtendedDataType
+// GDALEDTComponent
 //
 //************************************************************************
 

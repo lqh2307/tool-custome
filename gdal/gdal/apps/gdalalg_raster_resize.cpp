@@ -29,6 +29,16 @@ GDALRasterResizeAlgorithm::GDALRasterResizeAlgorithm(bool standaloneStep)
     : GDALRasterPipelineStepAlgorithm(NAME, DESCRIPTION, HELP_URL,
                                       standaloneStep)
 {
+    AddArg("resolution", 0, _("Target resolution (in destination CRS units)"),
+           &m_resolution)
+        .SetMinCount(2)
+        .SetMaxCount(2)
+        .SetMinValueExcluded(0)
+        .SetRepeatedArgAllowed(false)
+        .SetDisplayHintAboutRepetition(false)
+        .SetMetaVar("<xres>,<yres>")
+        .SetMutualExclusionGroup("resolution-size");
+
     AddArg("size", 0,
            _("Target size in pixels (or percentage if using '%' suffix)"),
            &m_size)
@@ -39,6 +49,7 @@ GDALRasterResizeAlgorithm::GDALRasterResizeAlgorithm(bool standaloneStep)
         .SetRepeatedArgAllowed(false)
         .SetDisplayHintAboutRepetition(false)
         .SetMetaVar("<width[%]>,<height[%]>")
+        .SetMutualExclusionGroup("resolution-size")
         .AddValidationAction(
             [this]()
             {
@@ -55,9 +66,10 @@ GDALRasterResizeAlgorithm::GDALRasterResizeAlgorithm(bool standaloneStep)
                             ok = true;
                         }
                     }
-                    else if (endptr &&
-                             ((endptr[0] == ' ' && endptr[1] == '%') ||
-                              endptr[0] == '%'))
+                    else if (endptr && ((endptr[0] == ' ' && endptr[1] == '%' &&
+                                         endptr + 2 == s.c_str() + s.size()) ||
+                                        (endptr[0] == '%' &&
+                                         endptr + 1 == s.c_str() + s.size())))
                     {
                         if (val >= 0)
                         {
@@ -84,9 +96,10 @@ GDALRasterResizeAlgorithm::GDALRasterResizeAlgorithm(bool standaloneStep)
 /*              GDALRasterResizeAlgorithm::RunStep()                    */
 /************************************************************************/
 
-bool GDALRasterResizeAlgorithm::RunStep(GDALProgressFunc, void *)
+bool GDALRasterResizeAlgorithm::RunStep(GDALPipelineStepRunContext &)
 {
-    CPLAssert(m_inputDataset.GetDatasetRef());
+    const auto poSrcDS = m_inputDataset[0].GetDatasetRef();
+    CPLAssert(poSrcDS);
     CPLAssert(m_outputDataset.GetName().empty());
     CPLAssert(!m_outputDataset.GetDatasetRef());
 
@@ -99,7 +112,12 @@ bool GDALRasterResizeAlgorithm::RunStep(GDALProgressFunc, void *)
         aosOptions.AddString(m_size[0]);
         aosOptions.AddString(m_size[1]);
     }
-
+    if (!m_resolution.empty())
+    {
+        aosOptions.AddString("-tr");
+        aosOptions.AddString(CPLSPrintf("%.17g", m_resolution[0]));
+        aosOptions.AddString(CPLSPrintf("%.17g", m_resolution[1]));
+    }
     if (!m_resampling.empty())
     {
         aosOptions.AddString("-r");
@@ -110,8 +128,7 @@ bool GDALRasterResizeAlgorithm::RunStep(GDALProgressFunc, void *)
         GDALTranslateOptionsNew(aosOptions.List(), nullptr);
 
     auto poOutDS = std::unique_ptr<GDALDataset>(GDALDataset::FromHandle(
-        GDALTranslate("", GDALDataset::ToHandle(m_inputDataset.GetDatasetRef()),
-                      psOptions, nullptr)));
+        GDALTranslate("", GDALDataset::ToHandle(poSrcDS), psOptions, nullptr)));
     GDALTranslateOptionsFree(psOptions);
     const bool bRet = poOutDS != nullptr;
     if (poOutDS)
@@ -121,5 +138,8 @@ bool GDALRasterResizeAlgorithm::RunStep(GDALProgressFunc, void *)
 
     return bRet;
 }
+
+GDALRasterResizeAlgorithmStandalone::~GDALRasterResizeAlgorithmStandalone() =
+    default;
 
 //! @endcond

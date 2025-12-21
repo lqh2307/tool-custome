@@ -37,7 +37,6 @@
 #include <list>
 #include <mutex>
 #include <stdexcept>
-#include <thread>
 #include <unordered_map>
 
 namespace lru11
@@ -62,6 +61,11 @@ class NullLock
     }
 };
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wweak-vtables"
+#endif
+
 /**
  * error raised when a key not in cache is passed to get()
  */
@@ -72,6 +76,10 @@ class KeyNotFound : public std::invalid_argument
     {
     }
 };
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 template <typename K, typename V> struct KeyValuePair
 {
@@ -107,7 +115,7 @@ template <typename K, typename V> struct KeyValuePair
 template <class Key, class Value, class Lock = NullLock,
           class Map = std::unordered_map<
               Key, typename std::list<KeyValuePair<Key, Value>>::iterator>>
-class Cache
+class Cache final
 {
   public:
     typedef KeyValuePair<Key, Value> node_type;
@@ -129,7 +137,7 @@ class Cache
     {
     }
 
-    virtual ~Cache() = default;
+    ~Cache() = default;
 
     size_t size() const
     {

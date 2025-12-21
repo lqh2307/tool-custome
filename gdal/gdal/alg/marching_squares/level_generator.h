@@ -92,15 +92,13 @@ class FixedLevelRangeIterator
         if (min > max)
             std::swap(min, max);
         size_t b = 0;
-        for (; b != count_ && levels_[b] < fudge(min, minLevel_, levels_[b]);
-             b++)
+        for (; b != count_ && levels_[b] < fudge(min, levels_[b]); b++)
             ;
         if (min == max)
             return Range<Iterator>(Iterator(*this, int(b)),
                                    Iterator(*this, int(b)));
         size_t e = b;
-        for (; e != count_ && levels_[e] <= fudge(max, minLevel_, levels_[e]);
-             e++)
+        for (; e != count_ && levels_[e] <= fudge(max, levels_[e]); e++)
             ;
         return Range<Iterator>(Iterator(*this, int(b)),
                                Iterator(*this, int(e)));
@@ -130,6 +128,11 @@ class FixedLevelRangeIterator
     const double maxLevel_;
 };
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wweak-vtables"
+#endif
+
 struct TooManyLevelsException : public std::exception
 {
     const char *what() const throw() override
@@ -138,6 +141,10 @@ struct TooManyLevelsException : public std::exception
                "levels";
     }
 };
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 // Arbitrary threshold to avoid too much computation time and memory
 // consumption
@@ -163,7 +170,7 @@ struct IntervalLevelRangeIterator
         if (!(df_i1 >= INT_MIN && df_i1 < INT_MAX))
             throw TooManyLevelsException();
         int i1 = static_cast<int>(df_i1);
-        double l1 = fudge(min, minLevel_, level(i1));
+        double l1 = fudge(min, level(i1));
         if (l1 > min)
         {
             df_i1 = ceil((l1 - offset_) / interval_);
@@ -181,7 +188,7 @@ struct IntervalLevelRangeIterator
         if (!(df_i2 >= INT_MIN && df_i2 < INT_MAX))
             throw TooManyLevelsException();
         int i2 = static_cast<int>(df_i2);
-        double l2 = fudge(max, minLevel_, level(i2));
+        const double l2 = fudge(max, level(i2));
         if (l2 > max)
         {
             df_i2 = floor((l2 - offset_) / interval_) + 1;
@@ -238,7 +245,7 @@ class ExponentialLevelRangeIterator
             std::swap(min, max);
 
         int i1 = index1(min);
-        double l1 = fudge(min, minLevel_, level(i1));
+        const double l1 = fudge(min, level(i1));
         if (l1 > min)
             i1 = index1(l1);
         Iterator b(*this, i1);
@@ -247,7 +254,7 @@ class ExponentialLevelRangeIterator
             return Range<Iterator>(b, b);
 
         int i2 = index2(max);
-        double l2 = fudge(max, minLevel_, level(i2));
+        const double l2 = fudge(max, level(i2));
         if (l2 > max)
             i2 = index2(l2);
         Iterator e(*this, i2);

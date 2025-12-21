@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL2TILES" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL2TILES" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal2tiles \- Generates directory with TMS tiles, KMLs and simple web viewers.
 .SH SYNOPSIS
@@ -163,17 +163,11 @@ Exclude transparent tiles from result tileset.
 .TP
 .B \-q, \-\-quiet
 Disable messages and status to stdout
-.sp
-Added in version 2.1.
-
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-\-processes=<NB_PROCESSES>
 Number of parallel processes to use for tiling, to speed\-up the computation.
-.sp
-Added in version 2.3.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -311,7 +305,7 @@ geodetic: mapped to WGS84 MapML tiling scheme
 APSTILE: from the tms_MapML_APSTILE.json data file
 .UNINDENT
 .sp
-The generated MapML file in the output directory is \fBmapml.mapl\fP
+The generated MapML file in the output directory is \fBmapml.mapml\fP
 .sp
 Available options are:
 .INDENT 0.0

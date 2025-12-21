@@ -244,14 +244,10 @@ retStringAndCPLFree* EscapeString(const char* str, int scheme) {
 %clear (int len, unsigned char *bin_string);
 #elif defined(SWIGCSHARP)
 %inline %{
-retStringAndCPLFree* EscapeString(int len, char *bin_string , int scheme) {
-    return CPLEscapeString((const char*)bin_string, len, scheme);
-}
-%}
-
 retStringAndCPLFree* EscapeString(int len, char *bin_string , int scheme=CPLES_SQL) {
     return CPLEscapeString(bin_string, len, scheme);
 }
+%}
 #elif defined(SWIGPYTHON)
 
 %feature( "kwargs" ) wrapper_EscapeString;
@@ -493,7 +489,7 @@ const char *wrapper_CPLGetThreadLocalConfigOption( const char * pszKey, const ch
 
 
 %rename(GetConfigOptions) wrapper_GetConfigOptions;
-#if defined(SWIGPYTHON) || defined(SWIGJAVA)
+#if defined(SWIGPYTHON) || defined(SWIGJAVA) || defined(SWIGCSHARP)
 %apply (char **dictAndCSLDestroy) { char ** };
 #else
 %apply (char **) { char ** };
@@ -572,7 +568,7 @@ GByte *CPLHexToBinary( const char *pszHex, int *pnBytes );
 #endif
 
 %apply Pointer NONNULL {const char * pszFilename};
-/* Added in GDAL 1.7.0 */
+
 
 #if defined(SWIGPYTHON)
 
@@ -625,7 +621,6 @@ VSI_RETVAL wrapper_VSIFileFromMemBuffer( const char* utf8_path, int nBytes, cons
 #endif
 #endif
 
-/* Added in GDAL 1.7.0 */
 VSI_RETVAL VSIUnlink(const char * utf8_path );
 
 %rename (UnlinkBatch) wrapper_VSIUnlinkBatch;
@@ -650,7 +645,6 @@ bool wrapper_VSIUnlinkBatch(char** files)
 }
 %clear (char **files);
 
-/* Added in GDAL 1.7.0 */
 /* Thread support is necessary for binding languages with threaded GC */
 /* even if the user doesn't explicitly use threads */
 %inline {
@@ -660,11 +654,12 @@ int wrapper_HasThreadSupport()
 }
 }
 
-/* Added for GDAL 1.8 */
+%rename (GetCurrentThreadCount) CPLGetCurrentThreadCount();
+int CPLGetCurrentThreadCount();
+
 VSI_RETVAL VSIMkdir(const char *utf8_path, int mode );
 VSI_RETVAL VSIRmdir(const char *utf8_path );
 
-/* Added for GDAL 2.3 */
 VSI_RETVAL VSIMkdirRecursive(const char *utf8_path, int mode );
 VSI_RETVAL VSIRmdirRecursive(const char *utf8_path );
 
@@ -781,9 +776,7 @@ char** VSIGetFileSystemsPrefixes();
 
 const char* VSIGetFileSystemOptions(const char * utf8_path);
 
-
-/* Added for GDAL 1.8
-
+/*
    We do not bother renaming the VSI*L api as this wrapping is not
    considered "official", or available for use by application code.
    It is just for some testing stuff.
@@ -864,7 +857,7 @@ int wrapper_VSIStatL( const char * utf8_path, StatBuf *psStatBufOut, int nFlags 
 #endif
 
 %rename (GetFileMetadata) VSIGetFileMetadata;
-#if defined(SWIGPYTHON)
+#if defined(SWIGPYTHON) || defined(SWIGCSHARP)
 %apply (char **dictAndCSLDestroy) { char ** };
 #else
 %apply (char **) { char ** };

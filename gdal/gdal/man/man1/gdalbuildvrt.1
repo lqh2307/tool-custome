@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALBUILDVRT" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDALBUILDVRT" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdalbuildvrt \- Builds a VRT from a list of datasets.
 .SH SYNOPSIS
@@ -39,8 +39,10 @@ gdalbuildvrt [\-\-help] [\-\-long\-usage] [\-\-help\-general]
              [\-\-quiet]
              [[\-strict]|[\-non_strict]]
              [\-tile_index <field_name>]
-             [\-resolution user|common|average|highest|lowest|same]
-             [\-tr <xres> <yes>] [\-input_file_list <filename>] [\-separate]
+             [\-resolution user|average|common|highest|lowest|same]
+             [\-tr <xres> <yes>] [\-input_file_list <filename>]
+             [[\-separate]|[\-pixel\-function <function>]]
+             [\-pixel\-function\-arg <NAME>=<VALUE>]...
              [\-allow_projection_difference] [\-sd <n>] [\-tap]
              [\-te <xmin> <ymin> <xmax> <ymax>] [\-addalpha] [\-b <band>]...
              [\-hidenodata] [\-overwrite]
@@ -85,7 +87,10 @@ interpretation, etc. If not, files that do not match the common characteristics 
 unless \fI\%\-strict\fP is used.
 (This is only true in the default mode, and not when using the \fI\%\-separate\fP option)
 .sp
-If the inputs spatially overlap, the order of the input list is used to determine priority.
+Starting with GDAL 3.12, a function (e.g., \fBmin\fP, \fBmean\fP, \fBmedian\fP) can
+be specified (\fI\%\-pixel\-function\fP) to calculate pixel values from
+overlapping inputs. If no function is specified, or in earlier versions,
+the order of the input list is used to determine priority.
 Files that are listed at the end are the ones
 from which the content will be fetched. Note that nodata will be taken into account
 to potentially fetch data from lower\-priority datasets, but currently, alpha channel
@@ -234,11 +239,33 @@ is written in the \fBNoDataValue\fP element of each \fBVRTRasterBand element\fP\
 Place each input file into a separate band. See \fI\%Example 3\fP\&.
 Contrary to the default mode, it is not
 required that all bands have the same datatype.
+This option is mutually exclusive with \fI\%\-pixel\-function\fP\&.
 .sp
 Starting with GDAL 3.8, all bands of each input file are added as separate
 VRT bands, unless \fI\%\-b\fP is specified to select a subset of them.
 Before GDAL 3.8, only the first band of each input file was placed into a
 new VRT band, and \fI\%\-b\fP was ignored.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-pixel\-function
+Specify a function name to calculate a value from overlapping inputs.
+For a list of available pixel functions, see \fI\%Built\-in Pixel Functions\fP\&.
+If no function is specified, values will be taken from the last overlapping input.
+This option is mutually exclusive with with \fI\%\-separate\fP\&.
+.sp
+Added in version 3.12.
+
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-pixel\-function\-arg
+Specify an argument to be provided to a pixel function, in the format
+\fB<NAME>=<VALUE>\fP\&. Multiple arguments may be specified by repeating this
+option.
+.sp
+Added in version 3.12.
+
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -262,9 +289,6 @@ Select a resampling algorithm. Nearest is the default
 .TP
 .B \-oo <NAME>=<VALUE>
 Dataset open option (format\-specific)
-.sp
-Added in version 2.2.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -304,6 +328,15 @@ Skip source datasets that have issues with warnings, and continue processing. Th
 .sp
 Added in version 3.4.2.
 
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-write_absolute_path
+Added in version 3.12.0.
+
+.sp
+Enables writing the absolute path of the input datasets. By default, input
+filenames are written in a relative way with respect to the VRT filename (when possible).
 .UNINDENT
 .SH EXAMPLES
 .SS Example 1: Make a virtual mosaic from all TIFF files contained in a directory

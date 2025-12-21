@@ -134,16 +134,16 @@ class OGRMVTLayerBase CPL_NON_FINAL
                     const CPLJSONArray &oAttributesFromTileStats);
 
   public:
-    virtual ~OGRMVTLayerBase();
+    ~OGRMVTLayerBase() override;
 
-    virtual OGRFeatureDefn *GetLayerDefn() override
+    OGRFeatureDefn *GetLayerDefn() const override
     {
         return m_poFeatureDefn;
     }
 
     DEFINE_GET_NEXT_FEATURE_THROUGH_RAW(OGRMVTLayerBase)
 
-    virtual int TestCapability(const char *) override;
+    int TestCapability(const char *) const override;
 };
 
 /************************************************************************/
@@ -186,11 +186,11 @@ class OGRMVTLayer final : public OGRMVTLayerBase
                           const GByte *pabyDataFeatureEnd, bool bScanFields,
                           bool bScanGeometries, bool &bGeomTypeSet);
     void GetXY(int nX, int nY, double &dfX, double &dfY);
-    OGRGeometry *ParseGeometry(unsigned int nGeomType,
-                               const GByte *pabyDataGeometryEnd);
-    void SanitizeClippedGeometry(OGRGeometry *&poGeom);
+    std::unique_ptr<OGRGeometry>
+    ParseGeometry(unsigned int nGeomType, const GByte *pabyDataGeometryEnd);
+    void SanitizeClippedGeometry(std::unique_ptr<OGRGeometry> &poGeom);
 
-    virtual OGRFeature *GetNextRawFeature() override;
+    OGRFeature *GetNextRawFeature() override;
 
   public:
     OGRMVTLayer(OGRMVTDataset *poDS, const char *pszLayerName,
@@ -198,11 +198,11 @@ class OGRMVTLayer final : public OGRMVTLayerBase
                 const CPLJSONObject &oFields,
                 const CPLJSONArray &oAttributesFromTileStats,
                 OGRwkbGeometryType eGeomType);
-    virtual ~OGRMVTLayer();
+    ~OGRMVTLayer() override;
 
-    virtual void ResetReading() override;
+    void ResetReading() override;
 
-    virtual GIntBig GetFeatureCount(int bForce) override;
+    GIntBig GetFeatureCount(int bForce) override;
 
     GDALDataset *GetDataset() override;
 };
@@ -232,7 +232,7 @@ class OGRMVTDirectoryLayer final : public OGRMVTLayerBase
     int m_nFilterMaxX = 0;
     int m_nFilterMaxY = 0;
 
-    virtual OGRFeature *GetNextRawFeature() override;
+    OGRFeature *GetNextRawFeature() override;
     OGRFeature *CreateFeatureFrom(OGRFeature *poSrcFeature);
     void ReadNewSubDir();
     void OpenTile();
@@ -245,20 +245,20 @@ class OGRMVTDirectoryLayer final : public OGRMVTLayerBase
                          const CPLJSONArray &oAttributesFromTileStats,
                          bool bJsonField, OGRwkbGeometryType eGeomType,
                          const OGREnvelope *psExtent);
-    virtual ~OGRMVTDirectoryLayer();
+    ~OGRMVTDirectoryLayer() override;
 
-    virtual void ResetReading() override;
+    void ResetReading() override;
 
-    virtual GIntBig GetFeatureCount(int bForce) override;
+    GIntBig GetFeatureCount(int bForce) override;
     OGRErr IGetExtent(int iGeomField, OGREnvelope *psExtent,
                       bool bForce) override;
 
     OGRErr ISetSpatialFilter(int iGeomField,
                              const OGRGeometry *poGeom) override;
 
-    virtual OGRFeature *GetFeature(GIntBig nFID) override;
+    OGRFeature *GetFeature(GIntBig nFID) override;
 
-    virtual int TestCapability(const char *) override;
+    int TestCapability(const char *) const override;
 
     GDALDataset *GetDataset() override;
 };
@@ -296,16 +296,16 @@ class OGRMVTDataset final : public GDALDataset
 
   public:
     explicit OGRMVTDataset(GByte *pabyData);
-    virtual ~OGRMVTDataset();
+    ~OGRMVTDataset() override;
 
-    virtual int GetLayerCount() override
+    int GetLayerCount() const override
     {
         return static_cast<int>(m_apoLayers.size());
     }
 
-    virtual OGRLayer *GetLayer(int) override;
+    const OGRLayer *GetLayer(int) const override;
 
-    virtual int TestCapability(const char *) override
+    int TestCapability(const char *) const override
     {
         return FALSE;
     }
@@ -367,7 +367,7 @@ void OGRMVTLayerBase::InitFields(const CPLJSONObject &oFields,
 /*                           TestCapability()                           */
 /************************************************************************/
 
-int OGRMVTLayerBase::TestCapability(const char *pszCap)
+int OGRMVTLayerBase::TestCapability(const char *pszCap) const
 {
     if (EQUAL(pszCap, OLCStringsAsUTF8) || EQUAL(pszCap, OLCFastSpatialFilter))
     {
@@ -891,20 +891,15 @@ static int AddWithOverflowAccepted(int a, int b)
 /*                           ParseGeometry()                            */
 /************************************************************************/
 
-OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
-                                        const GByte *pabyDataGeometryEnd)
+std::unique_ptr<OGRGeometry>
+OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
+                           const GByte *pabyDataGeometryEnd)
 {
-    OGRMultiPoint *poMultiPoint = nullptr;
-    OGRMultiLineString *poMultiLS = nullptr;
-    OGRLineString *poLine = nullptr;
-    OGRMultiPolygon *poMultiPoly = nullptr;
-    OGRPolygon *poPoly = nullptr;
-    OGRLinearRing *poRing = nullptr;
-
     try
     {
         if (nGeomType == knGEOM_TYPE_POINT)
         {
+            std::unique_ptr<OGRMultiPoint> poMultiPoint;
             unsigned int nCmdCountCombined = 0;
             unsigned int nCount;
             READ_VARUINT32(m_pabyDataCur, pabyDataGeometryEnd,
@@ -919,11 +914,11 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
                 double dfX;
                 double dfY;
                 GetXY(nX, nY, dfX, dfY);
-                OGRPoint *poPoint = new OGRPoint(dfX, dfY);
+                auto poPoint = std::make_unique<OGRPoint>(dfX, dfY);
                 if (m_poFeatureDefn->GetGeomType() == wkbMultiPoint)
                 {
-                    poMultiPoint = new OGRMultiPoint();
-                    poMultiPoint->addGeometryDirectly(poPoint);
+                    poMultiPoint = std::make_unique<OGRMultiPoint>();
+                    poMultiPoint->addGeometry(std::move(poPoint));
                     return poMultiPoint;
                 }
                 else
@@ -935,7 +930,7 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
             {
                 int nX = 0;
                 int nY = 0;
-                poMultiPoint = new OGRMultiPoint();
+                poMultiPoint = std::make_unique<OGRMultiPoint>();
                 for (unsigned i = 0; i < nCount; i++)
                 {
                     int nDX = 0;
@@ -949,7 +944,7 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
                         double dfX;
                         double dfY;
                         GetXY(nX, nY, dfX, dfY);
-                        OGRPoint *poPoint = new OGRPoint(dfX, dfY);
+                        auto poPoint = std::make_unique<OGRPoint>(dfX, dfY);
                         if (i == 0 && nCount == 2 &&
                             m_pabyDataCur == pabyDataGeometryEnd)
                         {
@@ -964,10 +959,9 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
                                     "produced by some versions of Mapserver");
                                 bWarned = true;
                             }
-                            delete poMultiPoint;
                             return poPoint;
                         }
-                        poMultiPoint->addGeometryDirectly(poPoint);
+                        poMultiPoint->addGeometry(std::move(poPoint));
                     }
                 }
                 return poMultiPoint;
@@ -975,8 +969,11 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
         }
         else if (nGeomType == knGEOM_TYPE_LINESTRING)
         {
+            std::unique_ptr<OGRMultiLineString> poMultiLS;
+            std::unique_ptr<OGRLineString> poLine;
             int nX = 0;
             int nY = 0;
+            bool bFirstLine = true;
             while (m_pabyDataCur < pabyDataGeometryEnd)
             {
                 unsigned int nCmdCountCombined = 0;
@@ -992,20 +989,15 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
                 double dfX;
                 double dfY;
                 GetXY(nX, nY, dfX, dfY);
-                if (poLine != nullptr)
+                if (!bFirstLine ||
+                    m_poFeatureDefn->GetGeomType() == wkbMultiLineString)
                 {
-                    if (poMultiLS == nullptr)
-                    {
-                        poMultiLS = new OGRMultiLineString();
-                        poMultiLS->addGeometryDirectly(poLine);
-                    }
-                    poLine = new OGRLineString();
-                    poMultiLS->addGeometryDirectly(poLine);
+                    if (!poMultiLS)
+                        poMultiLS = std::make_unique<OGRMultiLineString>();
+                    if (poLine)
+                        poMultiLS->addGeometry(std::move(poLine));
                 }
-                else
-                {
-                    poLine = new OGRLineString();
-                }
+                poLine = std::make_unique<OGRLineString>();
                 poLine->addPoint(dfX, dfY);
                 READ_VARUINT32(m_pabyDataCur, pabyDataGeometryEnd,
                                nCmdCountCombined);
@@ -1022,12 +1014,9 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
                         poLine->addPoint(dfX, dfY);
                     }
                 }
-            }
-            if (poMultiLS == nullptr && poLine != nullptr &&
-                m_poFeatureDefn->GetGeomType() == wkbMultiLineString)
-            {
-                poMultiLS = new OGRMultiLineString();
-                poMultiLS->addGeometryDirectly(poLine);
+                if (poMultiLS)
+                    poMultiLS->addGeometry(std::move(poLine));
+                bFirstLine = false;
             }
             if (poMultiLS)
             {
@@ -1040,9 +1029,12 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
         }
         else if (nGeomType == knGEOM_TYPE_POLYGON)
         {
+            std::unique_ptr<OGRMultiPolygon> poMultiPoly;
+            std::unique_ptr<OGRPolygon> poPoly;
             int externalIsClockwise = 0;
             int nX = 0;
             int nY = 0;
+            OGREnvelope sExteriorRingEnvelope;
             while (m_pabyDataCur < pabyDataGeometryEnd)
             {
                 unsigned int nCmdCountCombined = 0;
@@ -1058,7 +1050,7 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
                 double dfX;
                 double dfY;
                 GetXY(nX, nY, dfX, dfY);
-                poRing = new OGRLinearRing();
+                auto poRing = std::make_unique<OGRLinearRing>();
                 poRing->addPoint(dfX, dfY);
                 READ_VARUINT32(m_pabyDataCur, pabyDataGeometryEnd,
                                nCmdCountCombined);
@@ -1078,19 +1070,26 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
                 // Should be a closepath
                 SKIP_VARINT(m_pabyDataCur, pabyDataGeometryEnd);
                 poRing->closeRings();
-                if (poPoly == nullptr)
+                if (!poPoly)
                 {
-                    poPoly = new OGRPolygon();
-                    poPoly->addRingDirectly(poRing);
+                    poPoly = std::make_unique<OGRPolygon>();
                     externalIsClockwise = poRing->isClockwise();
-                    if (!externalIsClockwise && m_bEnforceExternalIsClockwise)
+                    if (!externalIsClockwise)
                     {
-                        CPLError(CE_Failure, CPLE_AppDefined,
-                                 "Bad ring orientation detected");
-                        delete poPoly;
-                        delete poMultiPoly;
-                        return nullptr;
+                        if (m_bEnforceExternalIsClockwise)
+                        {
+                            CPLError(CE_Failure, CPLE_AppDefined,
+                                     "Bad ring orientation detected");
+                            return nullptr;
+                        }
+                        else
+                        {
+                            CPLDebugOnce(
+                                "MVT",
+                                "Bad ring orientation detected. Auto-fixing");
+                        }
                     }
+                    poPoly->addRing(std::move(poRing));
                 }
                 else
                 {
@@ -1098,28 +1097,62 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
                     // an interior or exterior ring
                     if (externalIsClockwise != poRing->isClockwise())
                     {
-                        poPoly->addRingDirectly(poRing);
+                        poPoly->addRing(std::move(poRing));
                     }
                     else
                     {
-                        if (poMultiPoly == nullptr)
+#ifdef HAVE_GEOS
                         {
-                            poMultiPoly = new OGRMultiPolygon();
-                            poMultiPoly->addGeometryDirectly(poPoly);
+                            // This block is just to deal with potential bad
+                            // oriented rings
+                            // Such as those produced by GDAL < 3.12 in some
+                            // situations like
+                            // https://github.com/OSGeo/gdal/issues/13305
+                            if (!sExteriorRingEnvelope.IsInit())
+                                poPoly->getEnvelope(&sExteriorRingEnvelope);
+                            OGREnvelope sCurRingEnvelope;
+                            poRing->getEnvelope(&sCurRingEnvelope);
+                            // Cheap heuristics to detect potentially inner
+                            // rings
+                            if (sExteriorRingEnvelope.Contains(
+                                    sCurRingEnvelope))
+                            {
+                                // Now do the real check
+                                OGRLineString oLS(*poRing);
+                                if (poPoly->Contains(&oLS))
+                                {
+                                    CPLDebugOnce("MVT",
+                                                 "Bad ring orientation "
+                                                 "detected. Auto-fixing");
+                                    poPoly->addRing(std::move(poRing));
+                                    continue;
+                                }
+                            }
                         }
+#endif
 
-                        poPoly = new OGRPolygon();
-                        poMultiPoly->addGeometryDirectly(poPoly);
-                        poPoly->addRingDirectly(poRing);
+                        if (!poMultiPoly)
+                        {
+                            poMultiPoly = std::make_unique<OGRMultiPolygon>();
+                        }
+                        poMultiPoly->addGeometry(std::move(poPoly));
+
+                        poPoly = std::make_unique<OGRPolygon>();
+                        poPoly->addRing(std::move(poRing));
+                        sExteriorRingEnvelope = OGREnvelope();
                     }
                 }
-                poRing = nullptr;
             }
-            if (poMultiPoly == nullptr && poPoly != nullptr &&
-                m_poFeatureDefn->GetGeomType() == wkbMultiPolygon)
+            if (poMultiPoly)
             {
-                poMultiPoly = new OGRMultiPolygon();
-                poMultiPoly->addGeometryDirectly(poPoly);
+                CPLAssert(poPoly);
+                poMultiPoly->addGeometry(std::move(poPoly));
+            }
+            else if (poPoly &&
+                     m_poFeatureDefn->GetGeomType() == wkbMultiPolygon)
+            {
+                poMultiPoly = std::make_unique<OGRMultiPolygon>();
+                poMultiPoly->addGeometry(std::move(poPoly));
             }
             if (poMultiPoly)
             {
@@ -1134,16 +1167,6 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
     catch (const GPBException &e)
     {
         CPLError(CE_Failure, CPLE_AppDefined, "%s", e.what());
-        delete poMultiPoint;
-        if (poMultiPoly)
-            delete poMultiPoly;
-        else if (poPoly)
-            delete poPoly;
-        if (poMultiLS)
-            delete poMultiLS;
-        else if (poLine)
-            delete poLine;
-        delete poRing;
     }
     return nullptr;
 }
@@ -1152,7 +1175,7 @@ OGRGeometry *OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
 /*                      SanitizeClippedGeometry()                       */
 /************************************************************************/
 
-void OGRMVTLayer::SanitizeClippedGeometry(OGRGeometry *&poGeom)
+void OGRMVTLayer::SanitizeClippedGeometry(std::unique_ptr<OGRGeometry> &poGeom)
 {
     OGRwkbGeometryType eInGeomType = wkbFlatten(poGeom->getGeometryType());
     const OGRwkbGeometryType eLayerGeomType = GetGeomType();
@@ -1165,9 +1188,9 @@ void OGRMVTLayer::SanitizeClippedGeometry(OGRGeometry *&poGeom)
     // intersection a multipolygon and a polygon
     if (eInGeomType == wkbGeometryCollection)
     {
-        OGRGeometryCollection *poGC = poGeom->toGeometryCollection();
-        OGRGeometry *poTargetSingleGeom = nullptr;
-        OGRGeometryCollection *poTargetGC = nullptr;
+        std::unique_ptr<OGRGeometryCollection> poTargetGC;
+        const OGRGeometryCollection *poGC = poGeom->toGeometryCollection();
+        std::unique_ptr<OGRGeometry> poTargetSingleGeom;
         OGRwkbGeometryType ePartGeom;
         if (eLayerGeomType == wkbPoint || eLayerGeomType == wkbMultiPoint)
         {
@@ -1182,46 +1205,44 @@ void OGRMVTLayer::SanitizeClippedGeometry(OGRGeometry *&poGeom)
         {
             ePartGeom = wkbPolygon;
         }
-        for (auto &&poSubGeom : poGC)
+        for (const auto *poSubGeom : poGC)
         {
             if (wkbFlatten(poSubGeom->getGeometryType()) == ePartGeom)
             {
-                if (poTargetSingleGeom != nullptr)
+                if (poTargetSingleGeom)
                 {
-                    if (poTargetGC == nullptr)
+                    if (!poTargetGC)
                     {
-                        poTargetGC = OGRGeometryFactory::createGeometry(
-                                         OGR_GT_GetCollection(ePartGeom))
-                                         ->toGeometryCollection();
-                        poGeom = poTargetGC;
-                        poTargetGC->addGeometryDirectly(poTargetSingleGeom);
+                        poTargetGC.reset(OGRGeometryFactory::createGeometry(
+                                             OGR_GT_GetCollection(ePartGeom))
+                                             ->toGeometryCollection());
+                        // cppcheck-suppress nullPointerRedundantCheck
+                        poTargetGC->addGeometry(std::move(poTargetSingleGeom));
                     }
 
                     poTargetGC->addGeometry(poSubGeom);
                 }
                 else
                 {
-                    poTargetSingleGeom = poSubGeom->clone();
-                    poGeom = poTargetSingleGeom;
+                    poTargetSingleGeom.reset(poSubGeom->clone());
                 }
             }
         }
-        if (poGeom != poGC)
-        {
-            delete poGC;
-        }
+        if (poTargetGC)
+            poGeom = std::move(poTargetGC);
+        else if (poTargetSingleGeom)
+            poGeom = std::move(poTargetSingleGeom);
         eInGeomType = wkbFlatten(poGeom->getGeometryType());
     }
 
     // Wrap single into multi if requested by the layer geometry type
     if (OGR_GT_GetCollection(eInGeomType) == eLayerGeomType)
     {
-        OGRGeometryCollection *poGC =
+        auto poGC = std::unique_ptr<OGRGeometryCollection>(
             OGRGeometryFactory::createGeometry(eLayerGeomType)
-                ->toGeometryCollection();
-        poGC->addGeometryDirectly(poGeom);
-        poGeom = poGC;
-        return;
+                ->toGeometryCollection());
+        poGC->addGeometry(std::move(poGeom));
+        poGeom = std::move(poGC);
     }
 }
 
@@ -1238,7 +1259,7 @@ OGRFeature *OGRMVTLayer::GetNextRawFeature()
 
     unsigned int nKey = 0;
     const GByte *pabyDataLimit = m_pabyDataEnd;
-    OGRFeature *poFeature = nullptr;
+    std::unique_ptr<OGRFeature> poFeature;
     unsigned int nFeatureLength = 0;
     unsigned int nGeomType = 0;
 
@@ -1253,7 +1274,7 @@ OGRFeature *OGRMVTLayer::GetNextRawFeature()
                 READ_VARUINT32(m_pabyDataCur, pabyDataLimit, nKey);
                 if (nKey == MAKE_KEY(knLAYER_FEATURES, WT_DATA))
                 {
-                    poFeature = new OGRFeature(m_poFeatureDefn);
+                    poFeature = std::make_unique<OGRFeature>(m_poFeatureDefn);
                     break;
                 }
                 else
@@ -1337,8 +1358,7 @@ OGRFeature *OGRMVTLayer::GetNextRawFeature()
                     READ_SIZE(m_pabyDataCur, pabyDataFeatureEnd, nGeometrySize);
                     const GByte *pabyDataGeometryEnd =
                         m_pabyDataCur + nGeometrySize;
-                    OGRGeometry *poGeom =
-                        ParseGeometry(nGeomType, pabyDataGeometryEnd);
+                    auto poGeom = ParseGeometry(nGeomType, pabyDataGeometryEnd);
                     if (poGeom)
                     {
                         // Clip geometry to tile extent if requested
@@ -1358,24 +1378,22 @@ OGRFeature *OGRMVTLayer::GetNextRawFeature()
                                      sEnvelope.MaxX > m_dfTileMinX &&
                                      sEnvelope.MaxY > m_dfTileMinY)
                             {
-                                OGRGeometry *poClipped =
-                                    poGeom->Intersection(&m_oClipPoly);
+                                auto poClipped = std::unique_ptr<OGRGeometry>(
+                                    poGeom->Intersection(&m_oClipPoly));
                                 if (poClipped)
                                 {
                                     SanitizeClippedGeometry(poClipped);
                                     if (poClipped->IsEmpty())
                                     {
-                                        delete poClipped;
                                         bOK = false;
                                     }
                                     else
                                     {
                                         poClipped->assignSpatialReference(
                                             GetSpatialRef());
-                                        poFeature->SetGeometryDirectly(
-                                            poClipped);
-                                        delete poGeom;
-                                        poGeom = nullptr;
+                                        poFeature->SetGeometry(
+                                            std::move(poClipped));
+                                        poGeom.reset();
                                     }
                                 }
                             }
@@ -1388,7 +1406,7 @@ OGRFeature *OGRMVTLayer::GetNextRawFeature()
                         if (poGeom)
                         {
                             poGeom->assignSpatialReference(GetSpatialRef());
-                            poFeature->SetGeometryDirectly(poGeom);
+                            poFeature->SetGeometry(std::move(poGeom));
                         }
                     }
 
@@ -1406,19 +1424,17 @@ OGRFeature *OGRMVTLayer::GetNextRawFeature()
             {
                 poFeature->SetFID(m_nFID);
                 m_nFID++;
-                return poFeature;
+                return poFeature.release();
             }
             else
             {
-                delete poFeature;
-                poFeature = nullptr;
+                poFeature.reset();
             }
         }
     }
     catch (const GPBException &e)
     {
         CPLError(CE_Failure, CPLE_AppDefined, "%s", e.what());
-        delete poFeature;
         return nullptr;
     }
 }
@@ -1802,7 +1818,7 @@ OGRErr OGRMVTDirectoryLayer::ISetSpatialFilter(int iGeomField,
 /*                           TestCapability()                           */
 /************************************************************************/
 
-int OGRMVTDirectoryLayer::TestCapability(const char *pszCap)
+int OGRMVTDirectoryLayer::TestCapability(const char *pszCap) const
 {
     if (EQUAL(pszCap, OLCFastGetExtent))
     {
@@ -1949,7 +1965,7 @@ OGRMVTDataset::~OGRMVTDataset()
 /*                              GetLayer()                              */
 /************************************************************************/
 
-OGRLayer *OGRMVTDataset::GetLayer(int iLayer)
+const OGRLayer *OGRMVTDataset::GetLayer(int iLayer) const
 
 {
     if (iLayer < 0 || iLayer >= GetLayerCount())
@@ -2600,8 +2616,8 @@ GDALDataset *OGRMVTDataset::OpenDirectory(GDALOpenInfo *poOpenInfo)
         osMetadataFile = pszMetadataFile;
     }
 
-    const CPLString osTileExtension(CSLFetchNameValueDef(
-        poOpenInfo->papszOpenOptions, "TILE_EXTENSION", "pbf"));
+    CPLString osTileExtension(CSLFetchNameValueDef(poOpenInfo->papszOpenOptions,
+                                                   "TILE_EXTENSION", "pbf"));
     bool bJsonField =
         CPLFetchBool(poOpenInfo->papszOpenOptions, "JSON_FIELD", false);
     VSIStatBufL sStat;
@@ -2842,7 +2858,7 @@ GDALDataset *OGRMVTDataset::OpenDirectory(GDALOpenInfo *poOpenInfo)
 
     OGRMVTDataset *poDS = new OGRMVTDataset(nullptr);
 
-    const CPLString osMetadataMemFilename =
+    CPLString osMetadataMemFilename =
         VSIMemGenerateHiddenFilename("mvt_metadata.json");
     if (!LoadMetadata(osMetadataFile, osMetadataContent, oVectorLayers,
                       oTileStatLayers, oBounds, poDS->m_poSRS,
@@ -2894,8 +2910,8 @@ GDALDataset *OGRMVTDataset::OpenDirectory(GDALOpenInfo *poOpenInfo)
     poDS->SetDescription(poOpenInfo->pszFilename);
     poDS->m_bClip =
         CPLFetchBool(poOpenInfo->papszOpenOptions, "CLIP", poDS->m_bClip);
-    poDS->m_osTileExtension = osTileExtension;
-    poDS->m_osMetadataMemFilename = osMetadataMemFilename;
+    poDS->m_osTileExtension = std::move(osTileExtension);
+    poDS->m_osMetadataMemFilename = std::move(osMetadataMemFilename);
     for (int i = 0; i < oVectorLayers.Size(); i++)
     {
         CPLJSONObject oId = oVectorLayers[i].GetObj("id");
@@ -3277,9 +3293,9 @@ GDALDataset *OGRMVTDataset::Open(GDALOpenInfo *poOpenInfo, bool bRecurseAllowed)
                                                              pszLayerName);
 
                         poDS->m_apoLayers.push_back(
-                            std::unique_ptr<OGRLayer>(new OGRMVTLayer(
+                            std::make_unique<OGRMVTLayer>(
                                 poDS, pszLayerName, pabyDataLayer, nLayerSize,
-                                oFields, oAttributesFromTileStats, eGeomType)));
+                                oFields, oAttributesFromTileStats, eGeomType));
                         CPLFree(pszLayerName);
                         break;
                     }
@@ -3292,6 +3308,12 @@ GDALDataset *OGRMVTDataset::Open(GDALOpenInfo *poOpenInfo, bool bRecurseAllowed)
             }
             else
             {
+                if (nKey == 0 && !poDS->m_apoLayers.empty())
+                {
+                    // File attached to https://github.com/OSGeo/gdal/issues/13268
+                    // has 0-byte padding after the layer definition.
+                    break;
+                }
                 SKIP_UNKNOWN_FIELD(pabyData, pabyDataLimit, FALSE);
             }
         }
@@ -3411,9 +3433,17 @@ class OGRMVTWriterDataset final : public GDALDataset
     void ConvertToTileCoords(double dfX, double dfY, int &nX, int &nY,
                              double dfTopX, double dfTopY,
                              double dfTileDim) const;
+
+    enum class ExpectedWindingOrder
+    {
+        NONE,
+        CLOCKWISE,
+        COUNTERCLOCKWISE,
+    };
     bool EncodeLineString(MVTTileLayerFeature *poGPBFeature,
                           const OGRLineString *poLS, OGRLineString *poOutLS,
-                          bool bWriteLastPoint, bool bReverseOrder,
+                          bool bWriteLastPoint,
+                          ExpectedWindingOrder eExpectedWindingOrder,
                           GUInt32 nMinLineTo, double dfTopX, double dfTopY,
                           double dfTileDim, int &nLastX, int &nLastY) const;
     bool EncodePolygon(MVTTileLayerFeature *poGPBFeature,
@@ -3454,7 +3484,7 @@ class OGRMVTWriterDataset final : public GDALDataset
 
   public:
     OGRMVTWriterDataset();
-    ~OGRMVTWriterDataset();
+    ~OGRMVTWriterDataset() override;
 
     CPLErr Close() override;
 
@@ -3462,7 +3492,7 @@ class OGRMVTWriterDataset final : public GDALDataset
                            const OGRGeomFieldDefn *poGeomFieldDefn,
                            CSLConstList papszOptions) override;
 
-    int TestCapability(const char *) override;
+    int TestCapability(const char *) const override;
 
     OGRErr WriteFeature(OGRMVTWriterLayer *poLayer, OGRFeature *poFeature,
                         GIntBig nSerial, OGRGeometry *poGeom);
@@ -3496,7 +3526,7 @@ class OGRMVTWriterLayer final : public OGRLayer
   public:
     OGRMVTWriterLayer(OGRMVTWriterDataset *poDS, const char *pszLayerName,
                       OGRSpatialReference *poSRS);
-    ~OGRMVTWriterLayer();
+    ~OGRMVTWriterLayer() override;
 
     void ResetReading() override
     {
@@ -3507,12 +3537,12 @@ class OGRMVTWriterLayer final : public OGRLayer
         return nullptr;
     }
 
-    OGRFeatureDefn *GetLayerDefn() override
+    const OGRFeatureDefn *GetLayerDefn() const override
     {
         return m_poFeatureDefn;
     }
 
-    int TestCapability(const char *) override;
+    int TestCapability(const char *) const override;
     OGRErr ICreateFeature(OGRFeature *) override;
     OGRErr CreateField(const OGRFieldDefn *, int) override;
 
@@ -3565,7 +3595,7 @@ OGRMVTWriterLayer::~OGRMVTWriterLayer()
 /*                            TestCapability()                          */
 /************************************************************************/
 
-int OGRMVTWriterLayer::TestCapability(const char *pszCap)
+int OGRMVTWriterLayer::TestCapability(const char *pszCap) const
 {
 
     if (EQUAL(pszCap, OLCSequentialWrite) || EQUAL(pszCap, OLCCreateField))
@@ -3707,21 +3737,72 @@ static unsigned GetCmdCountCombined(unsigned int nCmdId, unsigned int nCmdCount)
 
 bool OGRMVTWriterDataset::EncodeLineString(
     MVTTileLayerFeature *poGPBFeature, const OGRLineString *poLS,
-    OGRLineString *poOutLS, bool bWriteLastPoint, bool bReverseOrder,
-    GUInt32 nMinLineTo, double dfTopX, double dfTopY, double dfTileDim,
-    int &nLastX, int &nLastY) const
+    OGRLineString *poOutLS, bool bWriteLastPoint,
+    ExpectedWindingOrder eExpectedWindingOrder, GUInt32 nMinLineTo,
+    double dfTopX, double dfTopY, double dfTileDim, int &nLastX,
+    int &nLastY) const
 {
     const GUInt32 nInitialSize = poGPBFeature->getGeometryCount();
     const int nLastXOri = nLastX;
     const int nLastYOri = nLastY;
     GUInt32 nLineToCount = 0;
     const int nPoints = poLS->getNumPoints() - (bWriteLastPoint ? 0 : 1);
-    if (poOutLS)
-        poOutLS->setNumPoints(nPoints);
+    bool bReverseOrder = false;
+
+    if (eExpectedWindingOrder != ExpectedWindingOrder::NONE &&
+        poLS->getNumPoints() >= 4)
+    {
+        // Do the check on winding order in integer coordinates, since very flat
+        // rings in non rounded coordinates can change orientation after going
+        // to integer coordinates! In that case, let's remove them if they are
+        // inner rings.
+        int nLastXTmp = nLastX;
+        int nLastYTmp = nLastY;
+        OGRLinearRing oRingInteger;
+        for (int i = 0; i < nPoints; i++)
+        {
+            int nX, nY;
+            const double dfX = poLS->getX(i);
+            const double dfY = poLS->getY(i);
+            ConvertToTileCoords(dfX, dfY, nX, nY, dfTopX, dfTopY, dfTileDim);
+            const int nDiffX = nX - nLastXTmp;
+            const int nDiffY = nY - nLastYTmp;
+            if (i == 0 || nDiffX != 0 || nDiffY != 0)
+            {
+                // The minus sign is because the Y axis is positive-downward
+                // in vector tile coordinates!
+                // Cf https://docs.mapbox.com/data/tilesets/guides/vector-tiles-standards/#winding-order
+                oRingInteger.addPoint(nX, -nY);
+                nLastXTmp = nX;
+                nLastYTmp = nY;
+            }
+        }
+        oRingInteger.closeRings();
+        if (oRingInteger.getNumPoints() < 4)
+            return false;
+        const auto bIsClockWise = oRingInteger.isClockwise();
+        if (eExpectedWindingOrder == ExpectedWindingOrder::COUNTERCLOCKWISE)
+        {
+            if ((dfTileDim != 0 && bIsClockWise != poLS->isClockwise()) ||
+                (dfTileDim == 0 && bIsClockWise == poLS->isClockwise()))
+            {
+                return false;
+            }
+        }
+        bReverseOrder =
+            (eExpectedWindingOrder == ExpectedWindingOrder::CLOCKWISE &&
+             !bIsClockWise) ||
+            (eExpectedWindingOrder == ExpectedWindingOrder::COUNTERCLOCKWISE &&
+             bIsClockWise);
+    }
+
     int nFirstX = 0;
     int nFirstY = 0;
     int nLastXValid = nLastX;
     int nLastYValid = nLastY;
+    if (poOutLS)
+        poOutLS->setNumPoints(nPoints);
+
     for (int i = 0; i < nPoints; i++)
     {
         int nX, nY;
@@ -3928,15 +4009,9 @@ bool OGRMVTWriterDataset::EncodePolygon(MVTTileLayerFeature *poGPBFeature,
             continue;
         }
         const bool bWriteLastPoint = false;
-        // If dealing with input geometry in CRS units, exterior rings must
-        // be clockwise oriented.
-        // But if re-encoding a geometry already in tile coordinates
-        // (dfTileDim == 0), this is the reverse.
-        const bool bReverseOrder = dfTileDim != 0
-                                       ? ((i == 0 && !poRing->isClockwise()) ||
-                                          (i > 0 && poRing->isClockwise()))
-                                       : ((i == 0 && poRing->isClockwise()) ||
-                                          (i > 0 && !poRing->isClockwise()));
+        const auto eExpectedWindingOrder =
+            ((i == 0) ? ExpectedWindingOrder::CLOCKWISE
+                      : ExpectedWindingOrder::COUNTERCLOCKWISE);
         const GUInt32 nMinLineTo = 2;
         std::unique_ptr<OGRLinearRing> poOutInnerRing;
         if (i > 0)
@@ -3944,9 +4019,10 @@ bool OGRMVTWriterDataset::EncodePolygon(MVTTileLayerFeature *poGPBFeature,
         OGRLinearRing *poOutRing =
             poOutInnerRing.get() ? poOutInnerRing.get() : poOutOuterRing.get();
 
-        bool bSuccess = EncodeLineString(
-            poGPBFeature, poRing, poOutRing, bWriteLastPoint, bReverseOrder,
-            nMinLineTo, dfTopX, dfTopY, dfTileDim, nLastX, nLastY);
+        bool bSuccess =
+            EncodeLineString(poGPBFeature, poRing, poOutRing, bWriteLastPoint,
+                             eExpectedWindingOrder, nMinLineTo, dfTopX, dfTopY,
+                             dfTileDim, nLastX, nLastY);
         if (!bSuccess)
         {
             if (i == 0)
@@ -4176,7 +4252,6 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
     else if (eGeomType == wkbLineString || eGeomType == wkbMultiLineString)
     {
         const bool bWriteLastPoint = true;
-        const bool bReverseOrder = false;
         const GUInt32 nMinLineTo = 1;
 
         if (eGeomToEncodeType == wkbLineString)
@@ -4185,10 +4260,10 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
             int nLastX = 0;
             int nLastY = 0;
             OGRLineString oOutLS;
-            bGeomOK =
-                EncodeLineString(poGPBFeature.get(), poLS, &oOutLS,
-                                 bWriteLastPoint, bReverseOrder, nMinLineTo,
-                                 dfTopX, dfTopY, dfTileDim, nLastX, nLastY);
+            bGeomOK = EncodeLineString(
+                poGPBFeature.get(), poLS, &oOutLS, bWriteLastPoint,
+                ExpectedWindingOrder::NONE, nMinLineTo, dfTopX, dfTopY,
+                dfTileDim, nLastX, nLastY);
             dfAreaOrLength = oOutLS.get_Length();
         }
         else if (eGeomToEncodeType == wkbMultiLineString ||
@@ -4206,8 +4281,8 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
                     OGRLineString oOutLS;
                     bool bSubGeomOK = EncodeLineString(
                         poGPBFeature.get(), poLS, &oOutLS, bWriteLastPoint,
-                        bReverseOrder, nMinLineTo, dfTopX, dfTopY, dfTileDim,
-                        nLastX, nLastY);
+                        ExpectedWindingOrder::NONE, nMinLineTo, dfTopX, dfTopY,
+                        dfTileDim, nLastX, nLastY);
                     if (bSubGeomOK)
                         dfAreaOrLength += oOutLS.get_Length();
                     bGeomOK |= bSubGeomOK;
@@ -4475,10 +4550,8 @@ void OGRMVTWriterDataset::UpdateLayerProperties(
 
                 poLayerProperties->m_oMapFieldNameToIdx[osKey] =
                     poLayerProperties->m_aoFields.size();
-                poLayerProperties->m_aoFields.push_back(oFieldProps);
-                poFieldProps = &(
-                    poLayerProperties
-                        ->m_aoFields[poLayerProperties->m_aoFields.size() - 1]);
+                poLayerProperties->m_aoFields.push_back(std::move(oFieldProps));
+                poFieldProps = &(poLayerProperties->m_aoFields.back());
             }
         }
     }
@@ -5923,7 +5996,7 @@ OGRErr OGRMVTWriterDataset::WriteFeature(OGRMVTWriterLayer *poLayer,
 /*                            TestCapability()                          */
 /************************************************************************/
 
-int OGRMVTWriterDataset::TestCapability(const char *pszCap)
+int OGRMVTWriterDataset::TestCapability(const char *pszCap) const
 {
     if (EQUAL(pszCap, ODsCCreateLayer))
         return true;
@@ -6230,7 +6303,6 @@ GDALDataset *OGRMVTWriterDataset::Create(const char *pszFilename, int nXSize,
         papszOptions, "ATTRIBUTION", CPLGetBasenameSafe(pszFilename).c_str());
     poDS->m_osVersion = CSLFetchNameValueDef(
         papszOptions, "VERSION", "1.0.0");
-
     poDS->m_osType =
         CSLFetchNameValueDef(papszOptions, "TYPE", poDS->m_osType.c_str());
     poDS->m_bGZip = CPLFetchBool(papszOptions, "COMPRESS", poDS->m_bGZip);

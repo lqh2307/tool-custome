@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_GRID" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL_GRID" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal_grid \- Creates regular grid from the scattered data.
 .SH SYNOPSIS
@@ -86,9 +86,8 @@ by the relevant driver, causing a error.
 .INDENT 0.0
 .TP
 .B \-of <format>
-Select the output format. Starting with GDAL 2.3, if not specified, the
-format is guessed from the extension (previously was GTiff). Use the short
-format name.
+Select the output format. If not specified, the format is guessed from the
+extension. Use the short format name.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -299,9 +298,6 @@ When specified, this actually uses invdistnn implementation.
 .UNINDENT
 .SS invdistnn
 .sp
-Added in version 2.1.
-
-.sp
 Inverse distance to a power with nearest neighbor searching, ideal when
 max_points is used. It has following parameters:
 .INDENT 0.0
@@ -425,9 +421,6 @@ Default is 0.0. Added in GDAL 3.6
 .UNINDENT
 .SS linear
 .sp
-Added in version 2.1.
-
-.sp
 Linear interpolation algorithm.
 .sp
 The Linear method performs linear interpolation by computing a Delaunay
@@ -526,7 +519,7 @@ Often you have a text file with a list of comma separated XYZ values to work
 with (so called CSV file). You can easily use that kind of data source in
 \fBgdal_grid\fP\&. All you need is to create a virtual dataset header (VRT) for your CSV
 file and use it as an input datasource for \fBgdal_grid\fP\&. You can find details
-on the VRT format on the \fI\%VRT \-\- Virtual Format\fP description page.
+on the VRT format on the \fI\%VRT \-\- OGR Virtual Format\fP description page.
 .sp
 Here is a small example. Let\(aqs say we have a CSV file called \fIdem.csv\fP
 containing

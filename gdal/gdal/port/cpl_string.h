@@ -76,7 +76,7 @@ char CPL_DLL **CSLTokenizeString2(const char *pszString,
 #define CSLT_PRESERVEESCAPES 0x0008
 /** Flag for CSLTokenizeString2() to strip leading spaces */
 #define CSLT_STRIPLEADSPACES 0x0010
-/** Flag for CSLTokenizeString2() to strip trailaing spaces */
+/** Flag for CSLTokenizeString2() to strip trailing spaces */
 #define CSLT_STRIPENDSPACES 0x0020
 
 int CPL_DLL CSLPrint(CSLConstList papszStrList, FILE *fpOut);
@@ -422,6 +422,11 @@ extern "C++"
         CPLSTRING_METHOD_DLL CPLString &tolower(void);
 
         CPLSTRING_METHOD_DLL bool endsWith(const std::string &osStr) const;
+
+        CPLSTRING_METHOD_DLL CPLString URLEncode() const;
+
+      private:
+        operator void *(void) = delete;
     };
 
 #undef CPLSTRING_CLASS_DLL
@@ -644,6 +649,9 @@ extern "C++"
         {
             return std::vector<std::string>{begin(), end()};
         }
+
+      private:
+        operator void *(void) = delete;
     };
 
 #ifdef GDAL_COMPILATION

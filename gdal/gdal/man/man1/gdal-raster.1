@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-RASTER" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-RASTER" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-raster \- Entry point for raster commands
 .sp
@@ -40,40 +40,50 @@ Added in version 3.11.
 .EX
 Usage: gdal raster <SUBCOMMAND> [OPTIONS]
 where <SUBCOMMAND> is one of:
-  \- aspect:       Generate an aspect map
-  \- calc:         Perform raster algebra
-  \- clean\-collar: Clean the collar of a raster dataset, removing noise.
-  \- clip:         Clip a raster dataset.
-  \- color\-map:    Generate a RGB or RGBA dataset from a single band, using a color map
-  \- contour:      Creates a vector contour from a raster elevation model (DEM).
-  \- convert:      Convert a raster dataset.
-  \- create:       Create a new raster dataset.
-  \- edit:         Edit a raster dataset.
-  \- fill\-nodata:  Fill nodata raster regions by interpolation from edges.
-  \- footprint:    Compute the footprint of a raster dataset.
-  \- hillshade:    Generate a shaded relief map
-  \- index:        Create a vector index of raster datasets.
-  \- info:         Return information on a raster dataset.
-  \- mosaic:       Build a mosaic, either virtual (VRT) or materialized.
-  \- overview:     Manage overviews of a raster dataset.
-  \- pipeline:     Process a raster dataset.
-  \- pixel\-info:   Return information on a pixel of a raster dataset.
-  \- polygonize:   Create a polygon feature dataset from a raster band.
-  \- reclassify:   Reclassify values in a raster dataset
-  \- reproject:    Reproject a raster dataset.
-  \- resize:       Resize a raster dataset without changing the georeferenced extents.
-  \- roughness:    Generate a roughness map
-  \- scale:        Scale the values of the bands of a raster dataset.
-  \- select:       Select a subset of bands from a raster dataset.
-  \- set\-type:     Modify the data type of bands of a raster dataset.
-  \- sieve:        Remove small polygons from a raster dataset.
-  \- slope:        Generate a slope map
-  \- stack:        Combine together input bands into a multi\-band output, either virtual (VRT) or materialized.
-  \- tile:         Generate tiles in separate files from a raster dataset.
-  \- tpi:          Generate a Topographic Position Index (TPI) map
-  \- tri:          Generate a Terrain Ruggedness Index (TRI) map
-  \- unscale:      Convert scaled values of a raster dataset into unscaled values.
-  \- viewshed:     Compute the viewshed of a raster dataset.
+  \- as\-features:     Create features from pixels of a raster dataset
+  \- aspect:          Generate an aspect map
+  \- blend:           Blend/compose two raster datasets
+  \- calc:            Perform raster algebra
+  \- clean\-collar:    Clean the collar of a raster dataset, removing noise.
+  \- clip:            Clip a raster dataset.
+  \- color\-map:       Generate a RGB or RGBA dataset from a single band, using a color map
+  \- compare:         Compare two raster datasets.
+  \- contour:         Creates a vector contour from a raster elevation model (DEM).
+  \- convert:         Convert a raster dataset.
+  \- create:          Create a new raster dataset.
+  \- edit:            Edit a raster dataset.
+  \- fill\-nodata:     Fill nodata raster regions by interpolation from edges.
+  \- footprint:       Compute the footprint of a raster dataset.
+  \- hillshade:       Generate a shaded relief map
+  \- index:           Create a vector index of raster datasets.
+  \- info:            Return information on a raster dataset.
+  \- mosaic:          Build a mosaic, either virtual (VRT) or materialized.
+  \- neighbors:       Compute the value of each pixel from its neighbors (focal statistics) (alias: neighbours)
+  \- nodata\-to\-alpha: Replace nodata value(s) with an alpha band.
+  \- overview:        Manage overviews of a raster dataset.
+  \- pansharpen:      Perform a pansharpen operation.
+  \- pipeline:        Process a raster dataset applying several steps.
+  \- pixel\-info:      Return information on a pixel of a raster dataset.
+  \- polygonize:      Create a polygon feature dataset from a raster band.
+  \- proximity:       Produces a raster proximity map.
+  \- reclassify:      Reclassify values in a raster dataset
+  \- reproject:       Reproject a raster dataset.
+  \- resize:          Resize a raster dataset without changing the georeferenced extents.
+  \- rgb\-to\-palette:  Convert a RGB image into a pseudo\-color / paletted image.
+  \- roughness:       Generate a roughness map
+  \- scale:           Scale the values of the bands of a raster dataset.
+  \- select:          Select a subset of bands from a raster dataset.
+  \- set\-type:        Modify the data type of bands of a raster dataset.
+  \- sieve:           Remove small polygons from a raster dataset.
+  \- slope:           Generate a slope map
+  \- stack:           Combine together input bands into a multi\-band output, either virtual (VRT) or materialized.
+  \- tile:            Generate tiles in separate files from a raster dataset.
+  \- tpi:             Generate a Topographic Position Index (TPI) map
+  \- tri:             Generate a Terrain Ruggedness Index (TRI) map
+  \- unscale:         Convert scaled values of a raster dataset into unscaled values.
+  \- update:          Update the destination raster with the content of the input one.
+  \- viewshed:        Compute the viewshed of a raster dataset.
+  \- zonal\-stats:     Calculate raster zonal statistics
 
 Common Options:
   \-h, \-\-help              Display help message and exit
@@ -92,6 +102,8 @@ Options:
 .IP \(bu 2
 \fI\%gdal raster aspect\fP
 .IP \(bu 2
+\fI\%gdal raster blend\fP
+.IP \(bu 2
 \fI\%gdal raster calc\fP
 .IP \(bu 2
 \fI\%gdal raster clean\-collar\fP
@@ -99,6 +111,8 @@ Options:
 \fI\%gdal raster clip\fP
 .IP \(bu 2
 \fI\%gdal raster color\-map\fP
+.IP \(bu 2
+\fI\%gdal raster compare\fP
 .IP \(bu 2
 \fI\%gdal raster convert\fP
 .IP \(bu 2
@@ -114,6 +128,10 @@ Options:
 .IP \(bu 2
 \fI\%gdal raster mosaic\fP
 .IP \(bu 2
+\fI\%gdal raster neighbors\fP
+.IP \(bu 2
+\fI\%gdal raster nodata\-to\-alpha\fP
+.IP \(bu 2
 \fI\%gdal raster overview\fP
 .IP \(bu 2
 \fI\%gdal raster pipeline\fP
@@ -122,9 +140,13 @@ Options:
 .IP \(bu 2
 \fI\%gdal raster polygonize\fP
 .IP \(bu 2
+\fI\%gdal raster proximity\fP
+.IP \(bu 2
 \fI\%gdal raster reproject\fP
 .IP \(bu 2
 \fI\%gdal raster resize\fP
+.IP \(bu 2
+\fI\%gdal raster rgb\-to\-palette\fP
 .IP \(bu 2
 \fI\%gdal raster roughness\fP
 .IP \(bu 2
@@ -146,10 +168,12 @@ Options:
 .IP \(bu 2
 \fI\%gdal raster unscale\fP
 .IP \(bu 2
+\fI\%gdal raster update\fP
+.IP \(bu 2
 \fI\%gdal raster viewshed\fP
 .UNINDENT
 .SH EXAMPLES
-.SS Example 1: Getting information on the file \fButm.tif\fP (with JSON output)
+.SS Example 1: Getting information on the file \fButm.tif\fP (with text output)
 .INDENT 0.0
 .INDENT 3.5
 .sp

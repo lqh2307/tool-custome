@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALINFO" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDALINFO" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdalinfo \- Lists various information about a GDAL supported raster dataset
 .SH SYNOPSIS
@@ -255,9 +255,6 @@ Band pseudo\-color tables.
 .SH C API
 .sp
 This utility is also callable from C with \fI\%GDALInfo()\fP\&.
-.sp
-Added in version 2.1.
-
 .SH EXAMPLES
 .SS Example 1: Default output format
 .INDENT 0.0
@@ -437,7 +434,6 @@ Example of JSON output with \fBgdalinfo \-json utmsmall.tif\fP:
       \(dqtype\(dq:\(dqProjectedCRS\(dq,
       \(dqname\(dq:\(dqNAD27 / UTM zone 11N\(dq,
       \(dqbase_crs\(dq:{
-        \(dqtype\(dq:\(dqGeographicCRS\(dq,
         \(dqname\(dq:\(dqNAD27\(dq,
         \(dqdatum\(dq:{
           \(dqtype\(dq:\(dqGeodeticReferenceFrame\(dq,
@@ -550,12 +546,12 @@ Example of JSON output with \fBgdalinfo \-json utmsmall.tif\fP:
       }
     },
     \(dqproj:transform\(dq:[
-      440720.0,
       60.0,
       0.0,
-      3751320.0,
+      440720.0,
       0.0,
-      \-60.0
+      \-60.0,
+      3751320.0
     ],
     \(dqraster:bands\(dq:[
       {

@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal \- Main gdal entry point
 .sp
@@ -41,10 +41,11 @@ Added in version 3.11.
 Usage: gdal <COMMAND> [OPTIONS]
 where <COMMAND> is one of:
   \- convert:  Convert a dataset (shortcut for \(aqgdal raster convert\(aq or \(aqgdal vector convert\(aq).
+  \- dataset:  Commands to manage datasets.
   \- driver:   Command for driver specific operations.
   \- info:     Return information on a dataset (shortcut for \(aqgdal raster info\(aq or \(aqgdal vector info\(aq).
   \- mdim:     Multidimensional commands.
-  \- pipeline: Execute a pipeline (shortcut for \(aqgdal raster pipeline\(aq or \(aqgdal vector pipeline\(aq).
+  \- pipeline: Process a dataset applying several steps.
   \- raster:   Raster commands.
   \- vector:   Vector commands.
   \- vsi:      GDAL Virtual System Interface (VSI) commands.

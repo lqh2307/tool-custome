@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-VSI-LIST" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-VSI-LIST" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-vsi-list \- List files of one of the GDAL Virtual System Interface (VSI)
 .sp
@@ -51,7 +51,7 @@ Common Options:
   \-\-config <KEY>=<VALUE>                               Configuration option [may be repeated]
 
 Options:
-  \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>  Output format. OUTPUT\-FORMAT=json|text (default: json)
+  \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>  Output format. OUTPUT\-FORMAT=json|text
   \-l, \-\-long, \-\-long\-listing                           Use a long listing format
   \-R, \-\-recursive                                      List subdirectories recursively
   \-\-depth <DEPTH>                                      Maximum depth in recursive mode
@@ -79,7 +79,8 @@ Required.
 .INDENT 0.0
 .TP
 .B \-f, \-\-of, \-\-format, \-\-output\-format json|text
-Which output format to use. Default is JSON.
+Which output format to use. Default is JSON, and starting with GDAL 3.12,
+text when invoked from command line.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -117,7 +118,7 @@ Only valid when \fI\%\-\-output\-format\fP is set to \fBjson\fP (or let at its d
 .INDENT 3.5
 .sp
 .EX
-$ gdal vsi list \-lR \-\-of=text /vsis3/bucket
+$ gdal vsi list \-lR /vsis3/bucket
 .EE
 .UNINDENT
 .UNINDENT

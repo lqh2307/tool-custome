@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-RASTER-OVERVIEW-ADD" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-RASTER-OVERVIEW-ADD" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-raster-overview-add \- Add overviews to a raster dataset
 .sp
@@ -38,27 +38,31 @@ Added in version 3.11.
 .INDENT 3.5
 .sp
 .EX
-Usage: gdal raster overview add [OPTIONS] <DATASET>
+Usage: gdal raster overview add [OPTIONS] <INPUT>
 
 Adding overviews.
 
 Positional arguments:
-  \-\-dataset <DATASET>                Dataset (to be updated in\-place, unless \-\-external) [required]
+  \-i, \-\-dataset, \-\-input <INPUT>         Dataset (to be updated in\-place, unless \-\-external) [required]
 
 Common Options:
-  \-h, \-\-help                         Display help message and exit
-  \-\-json\-usage                       Display usage as JSON document and exit
-  \-\-config <KEY>=<VALUE>             Configuration option [may be repeated]
-  \-\-progress                         Display progress bar
+  \-h, \-\-help                             Display help message and exit
+  \-\-json\-usage                           Display usage as JSON document and exit
+  \-\-config <KEY>=<VALUE>                 Configuration option [may be repeated]
+  \-q, \-\-quiet                            Quiet mode (no progress bar)
 
 Options:
-  \-\-external                         Add external overviews
-  \-r, \-\-resampling <RESAMPLING>      Resampling method. RESAMPLING=nearest|average|cubic|cubicspline|lanczos|bilinear|gauss|average_magphase|rms|mode
-  \-\-levels <LEVELS>                  Levels / decimation factors [may be repeated]
-  \-\-min\-size <MIN\-SIZE>              Maximum width or height of the smallest overview level.
+  \-\-overview\-src <OVERVIEW\-SRC>          Source overview dataset [may be repeated]
+                                         Mutually exclusive with \-\-levels
+  \-\-external                             Add external overviews
+  \-r, \-\-resampling <RESAMPLING>          Resampling method. RESAMPLING=nearest|average|cubic|cubicspline|lanczos|bilinear|gauss|average_magphase|rms|mode
+  \-\-levels <LEVELS>                      Levels / decimation factors [may be repeated]
+                                         Mutually exclusive with \-\-overview\-src
+  \-\-min\-size <MIN\-SIZE>                  Maximum width or height of the smallest overview level.
+  \-\-co, \-\-creation\-option <KEY>=<VALUE>  Overview creation option [may be repeated]
 
 Advanced Options:
-  \-\-oo, \-\-open\-option <KEY>=<VALUE>  Open options [may be repeated]
+  \-\-oo, \-\-open\-option <KEY>=<VALUE>      Open options [may be repeated]
 .EE
 .UNINDENT
 .UNINDENT
@@ -66,15 +70,40 @@ Advanced Options:
 .sp
 \fBgdal raster overview add\fP can be used to build or rebuild overview images for
 most supported file formats with one of several downsampling algorithms.
+.sp
+Starting with GDAL 3.12, \fBgdal raster overview add\fP can be used as a
+step of a pipeline. In that case virtual overviews are generated at the output
+of the step, and can potentially be materialized in the final write step, when
+writing a GeoTIFF file with the COPY_SRC_OVERVIEWS creation option, or when writing
+to a COG (Cloud Optimized GeoTIFF) file.
+.SS Options
 .INDENT 0.0
 .TP
 .B \-\-dataset <DATASET>
-Dataset name, to be updated in\-place by default (unless \fI\%\-\-external\fP is specified). Required.
+Dataset name, to be updated in\-place by default (unless \fI\%\-\-external\fP is specified).
+Required for standalone execution, implicit when run as a pipeline step
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-\-external
 Create external \fB\&.ovr\fP overviews as GeoTIFF files.
+Not available when run as a pipeline step.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-overview\-src <INPUT>
+Added in version 3.12.
+
+.sp
+Add specified input raster datasets as overviews of the target dataset.
+Source overviews may come from any GDAL supported format, provided they
+have the same number of bands and geospatial extent than the target
+dataset.
+.sp
+That mode is currently only implemented when the target dataset is in
+GeoTIFF format, or when using \fI\%\-\-external\fP\&.
+.sp
+Mutually exclusive with \fI\%\-\-levels\fP
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -127,12 +156,31 @@ Otherwise, appropriate overview power\-of\-two factors will be selected
 until the smallest overview is smaller than the value of the
 \fI\%\-\-min\-size\fP switch.
 .UNINDENT
+.sp
+Mutually exclusive with \fI\%\-\-overview\-src\fP
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-\-min\-size <val>
 Maximum width or height of the smallest overview level. Only taken into
 account if explicit levels are not specified. Defaults to 256.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-co <NAME>=<VALUE>
+Added in version 3.12.
+
+.sp
+Overview creation options. May be repeated.
+.sp
+Many formats have one or more optional creation options that can be
+used to control particulars about the created overviews. Options available
+can be obtained by looking at the \fBOverviewCreationOptionList\fP returned
+by \fBgdal \-\-format <FORMAT\-NAME>\fP\&.
+.sp
+Most formats will support external overviews in a GeoTIFF file in a
+side\-car file of extension \fB\&.ovr\fP\&. You can consult the
+\fI\%overview creation options for GeoTIFF\fP\&.
 .UNINDENT
 .SH EXAMPLES
 .SS Example 1: Create overviews, embedded in the supplied TIFF file, with automatic computation of levels
@@ -158,7 +206,7 @@ gdal raster overview add \-r average \-\-levels=2,4,8,16 abc.tif
 .INDENT 3.5
 .sp
 .EX
-gdal raster overview add \-\-external \-\-levels=2,4,8,16 \-\-config COMPRESS_OVERVIEW=DEFLATE erdas.img
+gdal raster overview add \-\-external \-\-levels=2,4,8,16 \-\-co COMPRESS=YES erdas.img
 .EE
 .UNINDENT
 .UNINDENT
@@ -170,8 +218,8 @@ force the generation of external overview.
 .INDENT 3.5
 .sp
 .EX
-gdal raster overview add \-\-config COMPRESS_OVERVIEW=JPEG \-\-config PHOTOMETRIC_OVERVIEW=YCBCR
-         \-\-config INTERLEAVE_OVERVIEW=PIXEL rgb_dataset.ext 2 4 8 16
+gdal raster overview add \-\-co OVERVIEW=JPEG \-\-co PHOTOMETRIC=YCBCR \e
+                         \-\-co INTERLEAVE=PIXEL rgb_dataset.ext 2 4 8 16
 .EE
 .UNINDENT
 .UNINDENT
@@ -183,6 +231,24 @@ For example, one of potentially many raster layers in a GeoPackage (the \(dqfile
 .sp
 .EX
 gdal raster overview add GPKG:file.gpkg:layer
+.EE
+.UNINDENT
+.UNINDENT
+.SS Example 6: Add 3 existing datasets at scale 1:25K, 1:50K and 1:100K as overviews of \fBmy.tif\fP\&.
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+gdal raster overview add \-\-overview\-src ovr_25k.tif \-\-overview\-src ovr_50k.tif \-\-overview\-src ovr_100k.tif \-\-dataset my.tif
+.EE
+.UNINDENT
+.UNINDENT
+.SS Example 7: Create a COG file with non power\-of\-two overview levels.
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+gdal pipeline read input.tif ! reproject \-\-dst\-crs=EPSG:4326 ! add overview \-\-levels 16,64,128 ! write output.tif \-\-format=COG
 .EE
 .UNINDENT
 .UNINDENT

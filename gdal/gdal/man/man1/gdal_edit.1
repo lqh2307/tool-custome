@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_EDIT" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL_EDIT" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal_edit \- Edit in place various information of an existing GDAL dataset.
 .SH SYNOPSIS
@@ -145,25 +145,16 @@ Remove the georeference information.
 .TP
 .B \-unsetrpc
 Remove RPC information.
-.sp
-Added in version 2.4.
-
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-unsetstats
 Remove band statistics information.
-.sp
-Added in version 2.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-stats
 Calculate and store band statistics.
-.sp
-Added in version 2.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -172,17 +163,11 @@ Store user\-defined values for band statistics (minimum, maximum,
 mean and standard deviation). If any of the values is set to None,
 the real statistics are calculated from the file and the ones set
 to None are used from the real statistics.
-.sp
-Added in version 2.4.
-
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-approx_stats
 Calculate and store approximate band statistics.
-.sp
-Added in version 2.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -193,9 +178,6 @@ Assign a specified nodata value to output bands.
 .TP
 .B \-unsetnodata
 Remove existing nodata values.
-.sp
-Added in version 2.1.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -216,9 +198,6 @@ would be calculated as: true_value = (pixel_value * scale) + offset
 These values can be applied using \-unscale during a \fBgdal_translate\fP run.
 .UNINDENT
 .UNINDENT
-.sp
-Added in version 2.2.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -229,9 +208,6 @@ Alternatively one offset value per band can be provided, in which case
 the number of offset values must match the number of bands.
 If no offset is needed, it recommended to set the value to 0.
 For more see scale.
-.sp
-Added in version 2.2.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -246,9 +222,6 @@ Added in version 3.1.
 .B \-colorinterp_<X> {red|green|blue|alpha|gray|undefined|pan|coastal|rededge|nir|swir|mwir|lwir|...}
 Change the color interpretation of band X (where X is a valid band
 number, starting at 1).
-.sp
-Added in version 2.3.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -261,9 +234,6 @@ This option may be provided multiple times to provide a set of GCPs.
 .B \-unsetmd
 Remove existing metadata (in the default metadata domain).
 Can be combined with \fI\%\-mo\fP\&.
-.sp
-Added in version 2.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -276,9 +246,6 @@ is also specified.
 .TP
 .B \-oo <NAME>=<VALUE>
 Open option (format specific).
-.sp
-Added in version 2.0.
-
 .UNINDENT
 .sp
 The \fI\%\-a_ullr\fP, \fI\%\-a_ulurll\fP, \fI\%\-tr\fP and \fI\%\-unsetgt\fP options are exclusive.

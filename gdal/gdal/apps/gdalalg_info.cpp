@@ -42,10 +42,9 @@ class GDALInfoAlgorithm final
                             "'gdal vector info --help'";
     }
 
-  private:
-    std::unique_ptr<GDALRasterInfoAlgorithm> m_rasterInfo{};
-    std::unique_ptr<GDALVectorInfoAlgorithm> m_vectorInfo{};
+    ~GDALInfoAlgorithm() override;
 
+  private:
     std::string m_format{};
     GDALArgDatasetValue m_dataset{};
 
@@ -57,5 +56,7 @@ class GDALInfoAlgorithm final
         return false;
     }
 };
+
+GDALInfoAlgorithm::~GDALInfoAlgorithm() = default;
 
 GDAL_STATIC_REGISTER_ALG(GDALInfoAlgorithm);

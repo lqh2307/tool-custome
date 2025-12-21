@@ -21,14 +21,20 @@
 
 #include "cpl_string.h"
 #include "cpl_conv.h"
+#ifdef OGR_P_WITH_SRS_CACHE
+#include "cpl_mem_cache.h"
+#endif
 #include "cpl_minixml.h"
 
 #include "ogr_core.h"
 
 #include <limits>
+#include <memory>
+#include <string_view>
 
 class OGRGeometry;
 class OGRFieldDefn;
+class OGRSpatialReference;
 
 /* A default name for the default geometry column, instead of '' */
 #define OGR_GEOMETRY_DEFAULT_NON_EMPTY_NAME "_ogr_geometry_"
@@ -142,13 +148,15 @@ int CPL_DLL
 OGRGetISO8601DateTime(const OGRField *psField, const OGRISO8601Format &sFormat,
                       char szBuffer[OGR_SIZEOF_ISO8601_DATETIME_BUFFER]);
 char CPL_DLL *OGRGetXML_UTF8_EscapedString(const char *pszString);
-bool CPL_DLL OGRParseDateTimeYYYYMMDDTHHMMZ(const char *pszInput, size_t nLen,
+
+#ifdef GDAL_COMPILATION
+bool CPL_DLL OGRParseDateTimeYYYYMMDDTHHMMZ(std::string_view sInput,
                                             OGRField *psField);
-bool CPL_DLL OGRParseDateTimeYYYYMMDDTHHMMSSZ(const char *pszInput, size_t nLen,
+bool CPL_DLL OGRParseDateTimeYYYYMMDDTHHMMSSZ(std::string_view sInput,
                                               OGRField *psField);
-bool CPL_DLL OGRParseDateTimeYYYYMMDDTHHMMSSsssZ(const char *pszInput,
-                                                 size_t nLen,
+bool CPL_DLL OGRParseDateTimeYYYYMMDDTHHMMSSsssZ(std::string_view sInput,
                                                  OGRField *psField);
+#endif
 
 int OGRCompareDate(const OGRField *psFirstTuple,
                    const OGRField *psSecondTuple); /* used by ogr_gensql.cpp and
@@ -188,6 +196,15 @@ OGRGeometry CPL_DLL *GML2OGRGeometry_XMLNode(
     int nRecLevel = 0, int nSRSDimension = 0, bool bIgnoreGSG = false,
     bool bOrientation = true, bool bFaceHoleNegative = false,
     const char *pszId = nullptr);
+
+#ifdef OGR_P_WITH_SRS_CACHE
+OGRGeometry CPL_DLL *GML2OGRGeometry_XMLNode(
+    const CPLXMLNode *psNode, int nPseudoBoolGetSecondaryGeometryOption,
+    lru11::Cache<std::string, std::shared_ptr<OGRSpatialReference>> &oSRSCache,
+    int nRecLevel = 0, int nSRSDimension = 0, bool bIgnoreGSG = false,
+    bool bOrientation = true, bool bFaceHoleNegative = false,
+    const char *pszId = nullptr);
+#endif
 
 /************************************************************************/
 /*                        PostGIS EWKB encoding                         */

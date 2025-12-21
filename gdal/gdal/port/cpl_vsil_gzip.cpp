@@ -62,6 +62,7 @@
 #include "cpl_vsi.h"
 
 #include <cerrno>
+#include <cinttypes>
 #include <climits>
 #include <cstddef>
 #include <cstdio>
@@ -69,12 +70,8 @@
 #include <cstring>
 #include <ctime>
 
-#if HAVE_FCNTL_H
 #include <fcntl.h>
-#endif
-#if HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
+
 #include "cpl_zlib_header.h"  // to avoid warnings when including zlib.h
 
 #ifdef HAVE_LIBDEFLATE
@@ -345,7 +342,7 @@ class VSIGZipFilesystemHandler final : public VSIFilesystemHandler
 {
     CPL_DISALLOW_COPY_ASSIGN(VSIGZipFilesystemHandler)
 
-    CPLMutex *hMutex = nullptr;
+    std::recursive_mutex oMutex{};
     std::unique_ptr<VSIGZipHandle> poHandleLastGZipFile{};
     bool m_bInSaveInfo = false;
 
@@ -353,9 +350,9 @@ class VSIGZipFilesystemHandler final : public VSIFilesystemHandler
     VSIGZipFilesystemHandler() = default;
     ~VSIGZipFilesystemHandler() override;
 
-    VSIVirtualHandle *Open(const char *pszFilename, const char *pszAccess,
-                           bool bSetError,
-                           CSLConstList /* papszOptions */) override;
+    VSIVirtualHandleUniquePtr Open(const char *pszFilename,
+                                   const char *pszAccess, bool bSetError,
+                                   CSLConstList /* papszOptions */) override;
     VSIGZipHandle *OpenGZipReadOnly(const char *pszFilename,
                                     const char *pszAccess);
     int Stat(const char *pszFilename, VSIStatBufL *pStatBuf,
@@ -390,8 +387,7 @@ VSIGZipHandle *VSIGZipHandle::Duplicate()
     VSIFilesystemHandler *poFSHandler =
         VSIFileManager::GetHandler(m_pszBaseFileName);
 
-    VSIVirtualHandleUniquePtr poNewBaseHandle;
-    poNewBaseHandle.reset(poFSHandler->Open(m_pszBaseFileName, "rb"));
+    auto poNewBaseHandle = poFSHandler->Open(m_pszBaseFileName, "rb");
 
     if (poNewBaseHandle == nullptr)
         return nullptr;
@@ -2973,10 +2969,6 @@ VSIGZipFilesystemHandler::~VSIGZipFilesystemHandler()
         poHandleLastGZipFile->UnsetCanSaveInfo();
         poHandleLastGZipFile.reset();
     }
-
-    if (hMutex != nullptr)
-        CPLDestroyMutex(hMutex);
-    hMutex = nullptr;
 }
 
 /************************************************************************/
@@ -2985,7 +2977,7 @@ VSIGZipFilesystemHandler::~VSIGZipFilesystemHandler()
 
 void VSIGZipFilesystemHandler::SaveInfo(VSIGZipHandle *poHandle)
 {
-    CPLMutexHolder oHolder(&hMutex);
+    std::unique_lock oLock(oMutex);
     SaveInfo_unlocked(poHandle);
 }
 
@@ -3022,7 +3014,7 @@ void VSIGZipFilesystemHandler::SaveInfo_unlocked(VSIGZipHandle *poHandle)
 /*                                Open()                                */
 /************************************************************************/
 
-VSIVirtualHandle *
+VSIVirtualHandleUniquePtr
 VSIGZipFilesystemHandler::Open(const char *pszFilename, const char *pszAccess,
                                bool /* bSetError */,
                                CSLConstList /* papszOptions */)
@@ -3048,14 +3040,15 @@ VSIGZipFilesystemHandler::Open(const char *pszFilename, const char *pszAccess,
             return nullptr;
         }
 
-        VSIVirtualHandle *poVirtualHandle =
+        auto poVirtualHandle =
             poFSHandler->Open(pszFilename + strlen("/vsigzip/"), "wb");
 
         if (poVirtualHandle == nullptr)
             return nullptr;
 
-        return VSICreateGZipWritable(poVirtualHandle,
-                                     strchr(pszAccess, 'z') != nullptr, TRUE);
+        return VSIVirtualHandleUniquePtr(
+            VSICreateGZipWritable(poVirtualHandle.release(),
+                                  strchr(pszAccess, 'z') != nullptr, TRUE));
     }
 
     /* -------------------------------------------------------------------- */
@@ -3067,7 +3060,8 @@ VSIGZipFilesystemHandler::Open(const char *pszFilename, const char *pszAccess,
         // Wrap the VSIGZipHandle inside a buffered reader that will
         // improve dramatically performance when doing small backward
         // seeks.
-        return VSICreateBufferedReaderHandle(poGZIPHandle);
+        return VSIVirtualHandleUniquePtr(
+            VSICreateBufferedReaderHandle(poGZIPHandle));
 
     return nullptr;
 }
@@ -3098,7 +3092,7 @@ VSIGZipFilesystemHandler::OpenGZipReadOnly(const char *pszFilename,
     VSIFilesystemHandler *poFSHandler =
         VSIFileManager::GetHandler(pszFilename + strlen("/vsigzip/"));
 
-    CPLMutexHolder oHolder(&hMutex);
+    std::unique_lock oLock(oMutex);
 
 #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
     // Disable caching in fuzzing mode as the /vsigzip/ file is likely to
@@ -3156,7 +3150,7 @@ int VSIGZipFilesystemHandler::Stat(const char *pszFilename,
     if (!STARTS_WITH_CI(pszFilename, "/vsigzip/"))
         return -1;
 
-    CPLMutexHolder oHolder(&hMutex);
+    std::unique_lock oLock(oMutex);
 
     memset(pStatBuf, 0, sizeof(VSIStatBufL));
 
@@ -3294,7 +3288,6 @@ const char *VSIGZipFilesystemHandler::GetOptions()
  See :ref:`/vsigzip/ documentation <vsigzip>`
  \endverbatim
 
- @since GDAL 1.6.0
  */
 
 void VSIInstallGZipFileHandler()
@@ -3320,7 +3313,11 @@ class VSIZipEntryFileOffset final : public VSIArchiveEntryFileOffset
         m_file_pos.pos_in_zip_directory = file_pos.pos_in_zip_directory;
         m_file_pos.num_of_file = file_pos.num_of_file;
     }
+
+    ~VSIZipEntryFileOffset() override;
 };
+
+VSIZipEntryFileOffset::~VSIZipEntryFileOffset() = default;
 
 /************************************************************************/
 /* ==================================================================== */
@@ -3498,8 +3495,8 @@ class VSIZipFilesystemHandler final : public VSIArchiveFilesystemHandler
     CPL_DISALLOW_COPY_ASSIGN(VSIZipFilesystemHandler)
 
     std::map<CPLString, VSIZipWriteHandle *> oMapZipWriteHandles{};
-    VSIVirtualHandle *OpenForWrite_unlocked(const char *pszFilename,
-                                            const char *pszAccess);
+    VSIVirtualHandleUniquePtr OpenForWrite_unlocked(const char *pszFilename,
+                                                    const char *pszAccess);
 
     struct VSIFileInZipInfo
     {
@@ -3526,23 +3523,24 @@ class VSIZipFilesystemHandler final : public VSIArchiveFilesystemHandler
     VSIZipFilesystemHandler() = default;
     ~VSIZipFilesystemHandler() override;
 
-    const char *GetPrefix() override
+    const char *GetPrefix() const override
     {
         return "/vsizip";
     }
 
-    std::vector<CPLString> GetExtensions() override;
-    VSIArchiveReader *CreateReader(const char *pszZipFileName) override;
+    std::vector<CPLString> GetExtensions() const override;
+    std::unique_ptr<VSIArchiveReader>
+    CreateReader(const char *pszZipFileName) override;
 
-    VSIVirtualHandle *Open(const char *pszFilename, const char *pszAccess,
-                           bool bSetError,
-                           CSLConstList /* papszOptions */) override;
+    VSIVirtualHandleUniquePtr Open(const char *pszFilename,
+                                   const char *pszAccess, bool bSetError,
+                                   CSLConstList /* papszOptions */) override;
 
     char **GetFileMetadata(const char *pszFilename, const char *pszDomain,
                            CSLConstList papszOptions) override;
 
-    VSIVirtualHandle *OpenForWrite(const char *pszFilename,
-                                   const char *pszAccess);
+    VSIVirtualHandleUniquePtr OpenForWrite(const char *pszFilename,
+                                           const char *pszAccess);
 
     int CopyFile(const char *pszSource, const char *pszTarget,
                  VSILFILE *fpSource, vsi_l_offset nSourceSize,
@@ -3642,7 +3640,7 @@ VSIZipFilesystemHandler::~VSIZipFilesystemHandler()
 /*                          GetExtensions()                             */
 /************************************************************************/
 
-std::vector<CPLString> VSIZipFilesystemHandler::GetExtensions()
+std::vector<CPLString> VSIZipFilesystemHandler::GetExtensions() const
 {
     std::vector<CPLString> oList;
     oList.push_back(".zip");
@@ -3675,20 +3673,13 @@ std::vector<CPLString> VSIZipFilesystemHandler::GetExtensions()
 /*                           CreateReader()                             */
 /************************************************************************/
 
-VSIArchiveReader *
+std::unique_ptr<VSIArchiveReader>
 VSIZipFilesystemHandler::CreateReader(const char *pszZipFileName)
 {
-    VSIZipReader *poReader = new VSIZipReader(pszZipFileName);
+    auto poReader = std::make_unique<VSIZipReader>(pszZipFileName);
 
-    if (!poReader->IsValid())
+    if (!poReader->IsValid() || !poReader->GotoFirstFile())
     {
-        delete poReader;
-        return nullptr;
-    }
-
-    if (!poReader->GotoFirstFile())
-    {
-        delete poReader;
         return nullptr;
     }
 
@@ -3728,37 +3719,37 @@ class VSISOZipHandle final : public VSIVirtualHandle
                    uint32_t nToSkip, uint32_t nChunkSize);
     ~VSISOZipHandle() override;
 
-    virtual int Seek(vsi_l_offset nOffset, int nWhence) override;
+    int Seek(vsi_l_offset nOffset, int nWhence) override;
 
-    virtual vsi_l_offset Tell() override
+    vsi_l_offset Tell() override
     {
         return nCurPos_;
     }
 
-    virtual size_t Read(void *pBuffer, size_t nSize, size_t nCount) override;
+    size_t Read(void *pBuffer, size_t nSize, size_t nCount) override;
 
-    virtual size_t Write(const void *, size_t, size_t) override
+    size_t Write(const void *, size_t, size_t) override
     {
         return 0;
     }
 
-    virtual int Eof() override
+    int Eof() override
     {
         return bEOF_;
     }
 
-    virtual int Error() override
+    int Error() override
     {
         return bError_;
     }
 
-    virtual void ClearErr() override
+    void ClearErr() override
     {
         bEOF_ = false;
         bError_ = false;
     }
 
-    virtual int Close() override;
+    int Close() override;
 
     bool IsOK() const
     {
@@ -4051,51 +4042,46 @@ bool VSIZipFilesystemHandler::GetFileInfo(const char *pszFilename,
 {
 
     CPLString osZipInFileName;
-    char *zipFilename =
-        SplitFilename(pszFilename, osZipInFileName, true, bSetError);
+    std::unique_ptr<char, VSIFreeReleaser> zipFilename(
+        SplitFilename(pszFilename, osZipInFileName, true, bSetError));
     if (zipFilename == nullptr)
         return false;
 
     {
-        CPLMutexHolder oHolder(&hMutex);
-        if (oMapZipWriteHandles.find(zipFilename) != oMapZipWriteHandles.end())
+        std::unique_lock oLock(oMutex);
+        if (oMapZipWriteHandles.find(zipFilename.get()) !=
+            oMapZipWriteHandles.end())
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                      "Cannot read a zip file being written");
-            CPLFree(zipFilename);
             return false;
         }
     }
 
-    VSIArchiveReader *poReader = OpenArchiveFile(zipFilename, osZipInFileName);
+    auto poReader = OpenArchiveFile(zipFilename.get(), osZipInFileName);
     if (poReader == nullptr)
     {
-        CPLFree(zipFilename);
         return false;
     }
 
-    VSIFilesystemHandler *poFSHandler = VSIFileManager::GetHandler(zipFilename);
+    VSIFilesystemHandler *poFSHandler =
+        VSIFileManager::GetHandler(zipFilename.get());
 
-    VSIVirtualHandle *poVirtualHandle = poFSHandler->Open(zipFilename, "rb");
-
-    CPLFree(zipFilename);
-    zipFilename = nullptr;
+    VSIVirtualHandleUniquePtr poVirtualHandle(
+        poFSHandler->Open(zipFilename.get(), "rb"));
 
     if (poVirtualHandle == nullptr)
     {
-        delete poReader;
         return false;
     }
 
     unzFile unzF =
-        reinterpret_cast<VSIZipReader *>(poReader)->GetUnzFileHandle();
+        cpl::down_cast<VSIZipReader *>(poReader.get())->GetUnzFileHandle();
 
     if (cpl_unzOpenCurrentFile(unzF) != UNZ_OK)
     {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "cpl_unzOpenCurrentFile() failed");
-        delete poReader;
-        delete poVirtualHandle;
         return false;
     }
 
@@ -4108,8 +4094,6 @@ bool VSIZipFilesystemHandler::GetFileInfo(const char *pszFilename,
         CPLError(CE_Failure, CPLE_AppDefined,
                  "cpl_unzGetCurrentFileInfo() failed");
         cpl_unzCloseCurrentFile(unzF);
-        delete poReader;
-        delete poVirtualHandle;
         return false;
     }
 
@@ -4183,18 +4167,61 @@ bool VSIZipFilesystemHandler::GetFileInfo(const char *pszFilename,
     info.nUncompressedSize = static_cast<uint64_t>(file_info.uncompressed_size);
     info.nCompressedSize = static_cast<uint64_t>(file_info.compressed_size);
 
+    // Sanity checks
+    if (info.nCompressedSize >
+        std::numeric_limits<uint64_t>::max() - info.nStartDataStream)
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Invalid compressed size for file %s", pszFilename);
+        return false;
+    }
+    const uLong64 afterFileOffset =
+        info.nStartDataStream + info.nCompressedSize;
+
+    // Cf https://stackoverflow.com/questions/16792189/gzip-compression-ratio-for-zeros/16794960
+    constexpr unsigned MAX_DEFLATE_COMPRESSION_RATIO = 1032;
+    if (info.nCompressedSize == 0 && info.nUncompressedSize != 0)
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Invalid compressed size (=0) vs uncompressed size (!=0) for "
+                 "file %s",
+                 pszFilename);
+        return false;
+    }
+    else if (info.nCompressedSize != 0 &&
+             info.nUncompressedSize / info.nCompressedSize >
+                 MAX_DEFLATE_COMPRESSION_RATIO)
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Invalid compression ratio for file %s: %" PRIu64, pszFilename,
+                 info.nUncompressedSize / info.nCompressedSize);
+        return false;
+    }
+
+    // A bit arbitrary
+    constexpr unsigned THRESHOLD_FOR_BIG_ALLOCS = 1024 * 1024 * 1024;
+    if (info.nUncompressedSize > THRESHOLD_FOR_BIG_ALLOCS)
+    {
+        // Check that the compressed file size is consistent with the ZIP file size
+        poVirtualHandle->Seek(0, SEEK_END);
+        if (afterFileOffset > poVirtualHandle->Tell())
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Invalid compressed size for file %s: %" PRIu64,
+                     pszFilename, info.nCompressedSize);
+            return false;
+        }
+    }
+
     // Try to locate .sozip.idx file
-    uLong64 local_header_pos;
-    cpl_unzGetLocalHeaderPos(unzF, &local_header_pos);
-    local_header_pos = info.nStartDataStream + file_info.compressed_size;
     unz_file_info file_info2;
     std::string osAuxName;
     osAuxName.resize(1024);
     uLong64 indexPos;
     if (file_info.compression_method == 8 &&
         cpl_unzCurrentFileInfoFromLocalHeader(
-            unzF, local_header_pos, &file_info2, &osAuxName[0],
-            osAuxName.size(), &indexPos) == UNZ_OK)
+            unzF, afterFileOffset, &file_info2, &osAuxName[0], osAuxName.size(),
+            &indexPos) == UNZ_OK)
     {
         osAuxName.resize(strlen(osAuxName.c_str()));
         if (osAuxName.find(".sozip.idx") != std::string::npos)
@@ -4288,9 +4315,7 @@ bool VSIZipFilesystemHandler::GetFileInfo(const char *pszFilename,
 
     cpl_unzCloseCurrentFile(unzF);
 
-    delete poReader;
-
-    info.poVirtualHandle.reset(poVirtualHandle);
+    info.poVirtualHandle = std::move(poVirtualHandle);
 
     return true;
 }
@@ -4299,10 +4324,9 @@ bool VSIZipFilesystemHandler::GetFileInfo(const char *pszFilename,
 /*                                 Open()                               */
 /************************************************************************/
 
-VSIVirtualHandle *VSIZipFilesystemHandler::Open(const char *pszFilename,
-                                                const char *pszAccess,
-                                                bool bSetError,
-                                                CSLConstList /* papszOptions */)
+VSIVirtualHandleUniquePtr
+VSIZipFilesystemHandler::Open(const char *pszFilename, const char *pszAccess,
+                              bool bSetError, CSLConstList /* papszOptions */)
 {
 
     if (strchr(pszAccess, 'w') != nullptr)
@@ -4335,7 +4359,8 @@ VSIVirtualHandle *VSIZipFilesystemHandler::Open(const char *pszFilename,
         // Wrap the VSIGZipHandle inside a buffered reader that will
         // improve dramatically performance when doing small backward
         // seeks.
-        return VSICreateBufferedReaderHandle(poGZIPHandle.release());
+        return VSIVirtualHandleUniquePtr(
+            VSICreateBufferedReaderHandle(poGZIPHandle.release()));
     }
     else
 #endif
@@ -4350,8 +4375,8 @@ VSIVirtualHandle *VSIZipFilesystemHandler::Open(const char *pszFilename,
             {
                 return nullptr;
             }
-            return VSICreateCachedFile(poSOZIPHandle.release(),
-                                       info.nSOZIPChunkSize, 0);
+            return VSIVirtualHandleUniquePtr(VSICreateCachedFile(
+                poSOZIPHandle.release(), info.nSOZIPChunkSize, 0));
         }
 
         auto poGZIPHandle = std::make_unique<VSIGZipHandle>(
@@ -4366,7 +4391,8 @@ VSIVirtualHandle *VSIZipFilesystemHandler::Open(const char *pszFilename,
         // Wrap the VSIGZipHandle inside a buffered reader that will
         // improve dramatically performance when doing small backward
         // seeks.
-        return VSICreateBufferedReaderHandle(poGZIPHandle.release());
+        return VSIVirtualHandleUniquePtr(
+            VSICreateBufferedReaderHandle(poGZIPHandle.release()));
     }
 }
 
@@ -4455,11 +4481,7 @@ int VSIZipFilesystemHandler::Mkdir(const char *pszDirname, long /* nMode */)
     CPLString osDirname = pszDirname;
     if (!osDirname.empty() && osDirname.back() != '/')
         osDirname += "/";
-    VSIVirtualHandle *poZIPHandle = OpenForWrite(osDirname, "wb");
-    if (poZIPHandle == nullptr)
-        return -1;
-    delete poZIPHandle;
-    return 0;
+    return OpenForWrite(osDirname, "wb") != nullptr ? 0 : -1;
 }
 
 /************************************************************************/
@@ -4475,7 +4497,7 @@ char **VSIZipFilesystemHandler::ReadDirEx(const char *pszDirname, int nMaxFiles)
         return nullptr;
 
     {
-        CPLMutexHolder oHolder(&hMutex);
+        std::unique_lock oLock(oMutex);
 
         if (oMapZipWriteHandles.find(zipFilename) != oMapZipWriteHandles.end())
         {
@@ -4507,7 +4529,7 @@ int VSIZipFilesystemHandler::Stat(const char *pszFilename,
         return -1;
 
     {
-        CPLMutexHolder oHolder(&hMutex);
+        std::unique_lock oLock(oMutex);
 
         if (oMapZipWriteHandles.find(zipFilename) != oMapZipWriteHandles.end())
         {
@@ -4528,7 +4550,7 @@ int VSIZipFilesystemHandler::Stat(const char *pszFilename,
 
 void VSIZipFilesystemHandler::RemoveFromMap(VSIZipWriteHandle *poHandle)
 {
-    CPLMutexHolder oHolder(&hMutex);
+    std::unique_lock oLock(oMutex);
 
     for (std::map<CPLString, VSIZipWriteHandle *>::iterator iter =
              oMapZipWriteHandles.begin();
@@ -4546,14 +4568,15 @@ void VSIZipFilesystemHandler::RemoveFromMap(VSIZipWriteHandle *poHandle)
 /*                             OpenForWrite()                           */
 /************************************************************************/
 
-VSIVirtualHandle *VSIZipFilesystemHandler::OpenForWrite(const char *pszFilename,
-                                                        const char *pszAccess)
+VSIVirtualHandleUniquePtr
+VSIZipFilesystemHandler::OpenForWrite(const char *pszFilename,
+                                      const char *pszAccess)
 {
-    CPLMutexHolder oHolder(&hMutex);
+    std::unique_lock oLock(oMutex);
     return OpenForWrite_unlocked(pszFilename, pszAccess);
 }
 
-VSIVirtualHandle *
+VSIVirtualHandleUniquePtr
 VSIZipFilesystemHandler::OpenForWrite_unlocked(const char *pszFilename,
                                                const char *pszAccess)
 {
@@ -4568,16 +4591,14 @@ VSIZipFilesystemHandler::OpenForWrite_unlocked(const char *pszFilename,
     zipFilename = nullptr;
 
     // Invalidate cached file list.
-    std::map<CPLString, VSIArchiveContent *>::iterator iter =
-        oFileList.find(osZipFilename);
+    auto iter = oFileList.find(osZipFilename);
     if (iter != oFileList.end())
     {
-        delete iter->second;
-
         oFileList.erase(iter);
     }
 
-    if (oMapZipWriteHandles.find(osZipFilename) != oMapZipWriteHandles.end())
+    auto oIter = oMapZipWriteHandles.find(osZipFilename);
+    if (oIter != oMapZipWriteHandles.end())
     {
         if (strchr(pszAccess, '+') != nullptr)
         {
@@ -4587,7 +4608,7 @@ VSIZipFilesystemHandler::OpenForWrite_unlocked(const char *pszFilename,
             return nullptr;
         }
 
-        VSIZipWriteHandle *poZIPHandle = oMapZipWriteHandles[osZipFilename];
+        VSIZipWriteHandle *poZIPHandle = oIter->second;
 
         if (poZIPHandle->GetChildInWriting() != nullptr)
         {
@@ -4609,12 +4630,12 @@ VSIZipFilesystemHandler::OpenForWrite_unlocked(const char *pszFilename,
                                nullptr) != CE_None)
             return nullptr;
 
-        VSIZipWriteHandle *poChildHandle =
-            new VSIZipWriteHandle(this, nullptr, poZIPHandle);
+        auto poChildHandle =
+            std::make_unique<VSIZipWriteHandle>(this, nullptr, poZIPHandle);
 
-        poZIPHandle->StartNewFile(poChildHandle);
+        poZIPHandle->StartNewFile(poChildHandle.get());
 
-        return poChildHandle;
+        return VSIVirtualHandleUniquePtr(poChildHandle.release());
     }
     else
     {
@@ -4638,8 +4659,9 @@ VSIZipFilesystemHandler::OpenForWrite_unlocked(const char *pszFilename,
 
         if (!osZipInFileName.empty())
         {
-            VSIZipWriteHandle *poRes = reinterpret_cast<VSIZipWriteHandle *>(
-                OpenForWrite_unlocked(pszFilename, pszAccess));
+            auto poRes = std::unique_ptr<VSIZipWriteHandle>(
+                cpl::down_cast<VSIZipWriteHandle *>(
+                    OpenForWrite_unlocked(pszFilename, pszAccess).release()));
             if (poRes == nullptr)
             {
                 delete poHandle;
@@ -4649,10 +4671,10 @@ VSIZipFilesystemHandler::OpenForWrite_unlocked(const char *pszFilename,
 
             poRes->SetAutoDeleteParent();
 
-            return poRes;
+            return VSIVirtualHandleUniquePtr(poRes.release());
         }
 
-        return poHandle;
+        return VSIVirtualHandleUniquePtr(poHandle);
     }
 }
 
@@ -4703,8 +4725,6 @@ int VSIZipFilesystemHandler::CopyFile(const char *pszSource,
     auto oIterFileList = oFileList.find(osZipFilename);
     if (oIterFileList != oFileList.end())
     {
-        delete oIterFileList->second;
-
         oFileList.erase(oIterFileList);
     }
 
@@ -4930,7 +4950,6 @@ void VSIZipWriteHandle::StartNewFile(VSIZipWriteHandle *poSubFile)
  See :ref:`/vsizip/ documentation <vsizip>`
  \endverbatim
 
- @since GDAL 1.6.0
  */
 
 void VSIInstallZipFileHandler()
@@ -4956,7 +4975,6 @@ void VSIInstallZipFileHandler()
  * @return the output buffer (to be freed with VSIFree() if not provided)
  *         or NULL in case of error.
  *
- * @since GDAL 1.10.0
  */
 
 void *CPLZLibDeflate(const void *ptr, size_t nBytes, int nLevel, void *outptr,
@@ -5058,7 +5076,6 @@ void *CPLZLibDeflate(const void *ptr, size_t nBytes, int nLevel, void *outptr,
  * @return the output buffer (to be freed with VSIFree() if not provided)
  *         or NULL in case of error.
  *
- * @since GDAL 1.10.0
  */
 
 void *CPLZLibInflate(const void *ptr, size_t nBytes, void *outptr,

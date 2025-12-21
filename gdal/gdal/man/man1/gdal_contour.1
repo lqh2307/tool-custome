@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_CONTOUR" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL_CONTOUR" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal_contour \- Builds vector contour lines from a raster elevation model.
 .SH SYNOPSIS
@@ -80,9 +80,6 @@ Ignored in polygonal contouring (\fI\%\-p\fP) mode.
 Provides a name for the attribute in which to put the minimum elevation
 of contour polygon. If not provided no minimum elevation attribute
 is attached. Ignored in default line contouring mode.
-.sp
-Added in version 2.4.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -90,9 +87,6 @@ Added in version 2.4.0.
 Provides a name for the attribute in which to put the maximum elevation of
 contour polygon. If not provided no maximum elevation attribute is attached.
 Ignored in default line contouring mode.
-.sp
-Added in version 2.4.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -114,9 +108,11 @@ Input pixel value to treat as \(dqnodata\(dq.
 .TP
 .B \-f <format>
 Create output in a particular format.
-.sp
-Added in version 2.3.0: If not specified, the format is guessed from the extension (previously was ESRI Shapefile).
-
+.INDENT 7.0
+.INDENT 3.5
+If not specified, the format is guessed from the extension (previously was ESRI Shapefile).
+.UNINDENT
+.UNINDENT
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -133,6 +129,7 @@ Layer creation option (format specific)
 .B \-i <interval>
 Elevation interval between contours.
 Must specify either \fI\%\-i\fP or \fI\%\-fl\fP or \fI\%\-e\fP\&.
+The first contour will be generated at the first multiple of \fBinterval\fP which is greater than the raster minimum value.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -152,9 +149,6 @@ Name one or more \(dqfixed levels\(dq to extract, in ascending order separated b
 .B \-e <base>
 Generate levels on an exponential scale: \fIbase ^ k\fP, for \fIk\fP an integer.
 Must specify either \-i or \-fl or \-e.
-.sp
-Added in version 2.4.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -171,11 +165,8 @@ each level specified by \fI\%\-i\fP or \fI\%\-fl\fP or \fI\%\-e\fP,
 in case \fI\%\-fl\fP is used alone at least two fixed levels must be specified.
 .sp
 The minimum and maximum values from the raster are not automatically added to
-the fixed levels list but the special values \fIMIN\(ga\fP and \fIMAX\(ga\fP (case insensitive)
+the fixed levels list but the special values \fBMIN\fP and \fBMAX\fP (case insensitive)
 can be used to include them.
-.sp
-Added in version 2.4.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP

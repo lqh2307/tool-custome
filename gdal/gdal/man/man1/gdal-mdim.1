@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-MDIM" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-MDIM" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-mdim \- Entry point for multidimensional commands
 .sp
@@ -42,6 +42,7 @@ Usage: gdal mdim <SUBCOMMAND> [OPTIONS]
 where <SUBCOMMAND> is one of:
   \- convert: Convert a multidimensional dataset.
   \- info:    Return information on a multidimensional dataset.
+  \- mosaic:  Build a mosaic, either virtual (VRT) or materialized, from multidimensional datasets.
 
 Common Options:
   \-h, \-\-help              Display help message and exit
@@ -59,6 +60,8 @@ Options:
 \fI\%gdal mdim info\fP
 .IP \(bu 2
 \fI\%gdal mdim convert\fP
+.IP \(bu 2
+\fI\%gdal mdim mosaic\fP
 .UNINDENT
 .SH EXAMPLES
 .SS Example 1: Getting information on the file \fBtemperatures.nc\fP (with JSON output)

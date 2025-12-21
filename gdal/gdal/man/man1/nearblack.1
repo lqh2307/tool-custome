@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "NEARBLACK" "1" "Sep 04, 2025" "" "GDAL"
+.TH "NEARBLACK" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 nearblack \- Convert nearly black/white borders to black.
 .SH SYNOPSIS
@@ -71,8 +71,7 @@ The name of the output file to be created.
 .TP
 .B \-of <format>
 Select the output format.
-Starting with GDAL 2.3, if not specified, the format is guessed from the extension (previously
-was ERDAS Imagine .img).
+If not specified, the format is guessed from the extension.
 Use the short format name (GTiff for GeoTIFF for example).
 .UNINDENT
 .INDENT 0.0
@@ -164,9 +163,6 @@ to the input file \- which must support update.
 .SH C API
 .sp
 This utility is also callable from C with \fI\%GDALNearblack()\fP\&.
-.sp
-Added in version 2.1.
-
 .SH AUTHOR
 Frank Warmerdam <warmerdam@pobox.com>
 .SH COPYRIGHT

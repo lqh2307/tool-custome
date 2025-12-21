@@ -10,6 +10,12 @@
  * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
+#include "gdal_frmts.h"
+
+#ifdef PLUGIN_FILENAME
+#include "gdalplugindriverproxy.h"
+#endif
+
 #include "ogrsf_frmts.h"
 #include "gdal_priv.h"
 
@@ -163,6 +169,8 @@ void OGRFeatherDriverSetCommonMetadata(GDALDriver *poDriver)
     poDriver->SetMetadataItem(GDAL_DCAP_MEASURED_GEOMETRIES, "YES");
     poDriver->SetMetadataItem(GDAL_DCAP_Z_GEOMETRIES, "YES");
     poDriver->SetMetadataItem(GDAL_DMD_SUPPORTED_SQL_DIALECTS, "OGRSQL SQLITE");
+    poDriver->SetMetadataItem(GDAL_DCAP_REOPEN_AFTER_WRITE_REQUIRED, "YES");
+    poDriver->SetMetadataItem(GDAL_DCAP_CAN_READ_AFTER_DELETE, "YES");
 
     poDriver->SetMetadataItem(
         GDAL_DMD_CREATIONFIELDDATATYPES,
@@ -173,6 +181,16 @@ void OGRFeatherDriverSetCommonMetadata(GDALDriver *poDriver)
     poDriver->SetMetadataItem(GDAL_DMD_CREATION_FIELD_DEFN_FLAGS,
                               "WidthPrecision Nullable "
                               "Comment AlternativeName Domain");
+
+    poDriver->SetMetadataItem(
+        GDAL_DMD_OPENOPTIONLIST,
+        "<OpenOptionList>"
+        "  <Option name='LISTS_AS_STRING_JSON' type='boolean' description='"
+        "Whether lists of strings/integers/reals should be reported as "
+        "String(JSON) fields rather than String/Integer[64]/RealList. Useful "
+        "when null values in such lists must be exactly mapped as such.' "
+        "default='NO'/>"
+        "</OpenOptionList>");
 
     poDriver->pfnIdentify = OGRFeatherDriverIdentify;
     poDriver->SetMetadataItem(GDAL_DCAP_OPEN, "YES");

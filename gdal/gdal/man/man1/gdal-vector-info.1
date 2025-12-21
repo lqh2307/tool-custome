@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-VECTOR-INFO" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-VECTOR-INFO" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-vector-info \- Get information on a vector dataset
 .sp
@@ -38,12 +38,12 @@ Added in version 3.11.
 .INDENT 3.5
 .sp
 .EX
-Usage: gdal vector info [OPTIONS] <INPUT>
+Usage: gdal vector info [OPTIONS] <INPUT>...
 
 Return information on a vector dataset.
 
 Positional arguments:
-  \-i, \-\-dataset, \-\-input <INPUT>                       Input vector dataset [required]
+  \-i, \-\-dataset, \-\-input <INPUT>                       Input vector datasets [may be repeated] [required]
 
 Common Options:
   \-h, \-\-help                                           Display help message and exit
@@ -51,12 +51,16 @@ Common Options:
   \-\-config <KEY>=<VALUE>                               Configuration option [may be repeated]
 
 Options:
-  \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>  Output format. OUTPUT\-FORMAT=json|text (default: json)
-  \-l, \-\-layer <LAYER>                                  Layer name [may be repeated]
+  \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>  Output format. OUTPUT\-FORMAT=json|text
+  \-l, \-\-layer, \-\-input\-layer <INPUT\-LAYER>             Input layer name [may be repeated]
                                                        Mutually exclusive with \-\-sql
   \-\-features                                           List all features (beware of RAM consumption on large layers)
+                                                       Mutually exclusive with \-\-summary
+  \-\-summary                                            List the layer names and the geometry type
+                                                       Mutually exclusive with \-\-features
+  \-\-limit <FEATURE\-COUNT>                              Limit the number of features per layer (implies \-\-features)
   \-\-sql <statement>|@<filename>                        Execute the indicated SQL statement and return the result
-                                                       Mutually exclusive with \-\-layer
+                                                       Mutually exclusive with \-\-input\-layer
   \-\-where <WHERE>|@<filename>                          Attribute query in a restricted form of the queries used in the SQL WHERE statement
   \-\-dialect <DIALECT>                                  SQL dialect
   \-\-update                                             Open the dataset in update mode
@@ -72,24 +76,44 @@ Advanced Options:
 \fBgdal vector info\fP lists various information about a GDAL supported
 vector dataset.
 .sp
+Starting with GDAL 3.12, \fBgdal vector info\fP can be used as the last
+step of a pipeline.
+.sp
 The following options are available:
 .SS Standard options
 .INDENT 0.0
 .TP
 .B \-f, \-\-of, \-\-format, \-\-output\-format json|text
-Which output format to use. Default is JSON.
+Which output format to use. Default is JSON, and starting with GDAL 3.12,
+text when invoked from command line.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-l, \-\-layer <LAYER>
-Name of one or more layers to inspect.  If no layer names are passed and
+.B \-l, \-\-layer, \-\-input\-layer <INPUT\-LAYER>
+Name of one or more layers to inspect. If no layer names are passed and
 \fI\%\-\-sql\fP is not specified, then all layers will be selected.
 .UNINDENT
 .INDENT 0.0
 .TP
+.B \-\-summary
+Print a summary with the list of layers and the geometry type of each layer.
+This option is mutually exclusive with the \fI\%\-\-features\fP option.
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-\-features
-List all features. Beware of RAM consumption on large layers when using
-JSON output.
+List all features by default, unless limited with \fI\%\-\-limit\fP\&.
+Beware of RAM consumption on large layers when using JSON output.
+This option is mutually exclusive with the \fI\%\-\-summary\fP option.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-limit <FEATURE\-COUNT>
+Added in version 3.12.
+
+.sp
+Limit the number of features reported per layer. When set, this implies
+\fI\%\-\-features\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -101,6 +125,8 @@ in the current directory). Data can also be edited with SQL INSERT, UPDATE,
 DELETE, DROP TABLE, ALTER TABLE etc if the dataset is opened in update mode.
 Editing capabilities depend on the selected
 dialect with \fI\%\-\-dialect\fP\&.
+.sp
+This option is mutually exclusive with the \fI\%\-\-where\fP option.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -119,6 +145,8 @@ Example of \fB\-\-where\fP and quoting:
 .EE
 .UNINDENT
 .UNINDENT
+.sp
+This option is mutually exclusive with the \fI\%\-\-sql\fP option.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -131,14 +159,14 @@ and \fBINDIRECT_SQLITE\fP dialect values, and this can be used with any datasour
 .SS Advanced options
 .INDENT 0.0
 .TP
-.B \-\-oo <NAME>=<VALUE>
+.B \-\-oo, \-\-open\-option <NAME>=<VALUE>
 Dataset open option (format specific).
 .sp
 May be repeated.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-if <format>
+.B \-\-if, \-\-input\-format <format>
 Format/driver name to be attempted to open the input file(s). It is generally
 not necessary to specify it, but it can be used to skip automatic driver
 detection, when it fails to select the appropriate driver.
@@ -154,7 +182,7 @@ May be repeated.
 .INDENT 3.5
 .sp
 .EX
-$ gdal vector info \-\-format=text \-\-features poly.gpkg
+$ gdal vector info \-\-features poly.gpkg
 INFO: Open of \(gapoly.gpkg\(aq
       using driver \(gaGPKG\(aq successful.
 
@@ -276,7 +304,7 @@ OGRFeature(poly):10
 .INDENT 3.5
 .sp
 .EX
-$ gdal vector info poly.gpkg
+$ gdal vector info \-\-format=JSON poly.gpkg
 {
   \(dqdescription\(dq:\(dqpoly.gpkg\(dq,
   \(dqdriverShortName\(dq:\(dqGPKG\(dq,
@@ -307,7 +335,6 @@ $ gdal vector info poly.gpkg
               \(dqtype\(dq:\(dqProjectedCRS\(dq,
               \(dqname\(dq:\(dqOSGB36 / British National Grid\(dq,
               \(dqbase_crs\(dq:{
-                \(dqtype\(dq:\(dqGeographicCRS\(dq,
                 \(dqname\(dq:\(dqOSGB36\(dq,
                 \(dqdatum\(dq:{
                   \(dqtype\(dq:\(dqGeodeticReferenceFrame\(dq,

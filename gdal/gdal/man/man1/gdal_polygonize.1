@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_POLYGONIZE" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL_POLYGONIZE" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal_polygonize \- Produces a polygon feature layer from a raster.
 .SH SYNOPSIS
@@ -99,16 +99,15 @@ The source raster file from which polygons are derived.
 .TP
 .B \-b <band>
 The band on <raster_file> to build
-the polygons from. Starting with GDAL 2.2, the value can also be set to \(dqmask\(dq,
+the polygons from. The value can also be set to \(dqmask\(dq,
 to indicate that the mask band of the first band must be used (or
 \(dqmask,band_number\(dq for the mask of a specified band)
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-f <ogr_format>
-Select the output format. Starting with
-GDAL 2.3, if not specified, the format is guessed from the extension (previously
-was GML). Use the short format name
+Select the output format. If not specified, the format is guessed from the
+extension. Use the short format name
 .UNINDENT
 .INDENT 0.0
 .TP

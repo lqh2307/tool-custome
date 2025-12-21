@@ -17,7 +17,6 @@ add_gdal_driver(
           ogrgmldatasource.cpp
   PLUGIN_CAPABLE
   NO_DEPS
-  STRONG_CXX_WFLAGS
 )
 gdal_standard_includes(ogr_GML)
 
@@ -71,6 +70,8 @@ set_property(
   TARGET ${GDAL_LIB_TARGET_NAME}
   APPEND
   PROPERTY RESOURCE "${GDAL_DATA_FILES}")
+
+target_compile_definitions(ogr_GML PRIVATE OGR_P_WITH_SRS_CACHE)
 
 if (EMBED_RESOURCE_FILES)
     add_driver_embedded_resources(ogr_GML OGR_ENABLE_DRIVER_GML_PLUGIN embedded_resources.c)

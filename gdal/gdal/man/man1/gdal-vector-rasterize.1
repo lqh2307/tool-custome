@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-VECTOR-RASTERIZE" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-VECTOR-RASTERIZE" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-vector-rasterize \- Burn vector geometries into a raster
 .sp
@@ -43,30 +43,30 @@ Usage: gdal vector rasterize [OPTIONS] <INPUT> <OUTPUT>
 Burns vector geometries into a raster.
 
 Positional arguments:
-  \-i, \-\-input <INPUT>                                      Input vector dataset [required]
+  \-i, \-\-input <INPUT>                                      Input vector datasets [required]
   \-o, \-\-output <OUTPUT>                                    Output raster dataset [required]
 
 Common Options:
   \-h, \-\-help                                               Display help message and exit
   \-\-json\-usage                                             Display usage as JSON document and exit
   \-\-config <KEY>=<VALUE>                                   Configuration option [may be repeated]
-  \-\-progress                                               Display progress bar
+  \-q, \-\-quiet                                              Quiet mode (no progress bar)
 
 Options:
   \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>      Output format
   \-\-co, \-\-creation\-option <KEY>=<VALUE>                    Creation option [may be repeated]
+  \-\-overwrite                                              Whether overwriting existing output is allowed
   \-b, \-\-band <BAND>                                        The band(s) to burn values into (1\-based index) [may be repeated]
   \-\-invert                                                 Invert the rasterization
   \-\-all\-touched                                            Enables the ALL_TOUCHED rasterization option
   \-\-burn <BURN>                                            Burn value [may be repeated]
   \-a, \-\-attribute\-name <ATTRIBUTE\-NAME>                    Attribute name
   \-\-3d                                                     Indicates that a burn value should be extracted from the Z values of the feature
-  \-\-add                                                    Add to existing raster
-  \-l, \-\-layer, \-\-layer\-name <LAYER\-NAME>                   Layer name
+  \-l, \-\-input\-layer <INPUT\-LAYER>                          Input layer name
                                                            Mutually exclusive with \-\-sql
   \-\-where <WHERE>                                          SQL where clause
   \-\-sql <SQL>                                              SQL select statement
-                                                           Mutually exclusive with \-\-layer\-name
+                                                           Mutually exclusive with \-\-input\-layer
   \-\-dialect <DIALECT>                                      SQL dialect
   \-\-nodata <NODATA>                                        Assign a specified nodata value to output bands
   \-\-init <INIT>                                            Pre\-initialize output bands with specified value [may be repeated]
@@ -80,8 +80,8 @@ Options:
                                                            Mutually exclusive with \-\-resolution
   \-\-ot, \-\-datatype, \-\-output\-data\-type <OUTPUT\-DATA\-TYPE>  Output data type. OUTPUT\-DATA\-TYPE=Byte|Int8|UInt16|Int16|UInt32|Int32|UInt64|Int64|CInt16|CInt32|Float16|Float32|Float64|CFloat32|CFloat64
   \-\-optimization <OPTIMIZATION>                            Force the algorithm used (results are identical). OPTIMIZATION=AUTO|RASTER|VECTOR (default: AUTO)
+  \-\-add                                                    Add to existing raster
   \-\-update                                                 Whether to open existing dataset in update mode
-  \-\-overwrite                                              Whether overwriting existing output is allowed
 
 Advanced Options:
   \-\-oo, \-\-open\-option <KEY>=<VALUE>                        Open options [may be repeated]
@@ -93,6 +93,14 @@ Advanced Options:
 .sp
 \fBgdal vector rasterize\fP burns vector geometries into a raster.
 .sp
+Since GDAL 3.12, this algorithm can be part of a \fI\%gdal pipeline\fP\&.
+.sp
+The left figure illustrates the default rasterization behavior, where only pixels on the line render
+path are included.
+.sp
+The right figure shows the effect of \fI\%\-\-all\-touched\fP, where every pixel that touches the input polygons is
+included.
+.sp
 The following options are available:
 .SS Standard options
 .INDENT 0.0
@@ -103,7 +111,7 @@ Which output raster format to use. Allowed values may be given by
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-co <NAME>=<VALUE>
+.B \-\-co, \-\-creation\-option <NAME>=<VALUE>
 Many formats have one or more optional creation options that can be
 used to control particulars about the file created. For instance,
 the GeoTIFF driver supports creation options to control compression,
@@ -171,7 +179,7 @@ Instead of burning a new value, this adds the new value to the existing raster, 
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-l, \-\-layer, \-\-layer\-name <LAYER\-NAME>
+.B \-l, \-\-input\-layer <INPUT\-LAYER>
 Indicates the layer(s) from the datasource that will be used for input features. May be specified multiple times, but at least one layer name or a \-sql option must be specified (not both).
 .UNINDENT
 .INDENT 0.0
@@ -201,19 +209,22 @@ If a datasource does not support SQL natively, the default is to use the
 The \fI\%SQL SQLite dialect\fP dialect can be chosen with the \fBSQLITE\fP
 and \fBINDIRECT_SQLITE\fP dialect values, and this can be used with any data source.
 Overriding the default dialect may be beneficial because the capabilities of
-the SQL dialects vary. What SQL dialects a driver supports can be checked
-with \(dqgdal vector info\(dq.
+the SQL dialects vary.
 .sp
-Supported dialects can be checked with \fBgdal vector info\fP\&. For example:
+Supported dialects can be checked with \fBgdal \-\-format\fP\&. For example:
 .INDENT 7.0
 .INDENT 3.5
 .sp
 .EX
-$ gdal vector info \-\-format \(dqPostgreSQL\(dq
+$ gdal \-\-format \(dqPostgreSQL\(dq
+[...]
 Supported SQL dialects: NATIVE OGRSQL SQLITE
+[...]
 
-$ gdal vector info \-\-format \(dqESRI Shapefile\(dq
+$ gdal \-\-format \(dqESRI Shapefile\(dq
+[...]
 Supported SQL dialects: OGRSQL SQLITE
+[...]
 .EE
 .UNINDENT
 .UNINDENT
@@ -281,14 +292,14 @@ Whether overwriting existing output is allowed.
 .SS Advanced options
 .INDENT 0.0
 .TP
-.B \-\-oo <NAME>=<VALUE>
+.B \-\-oo, \-\-open\-option <NAME>=<VALUE>
 Dataset open option (format specific).
 .sp
 May be repeated.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-if <format>
+.B \-\-if, \-\-input\-format <format>
 Format/driver name to be attempted to open the input file(s). It is generally
 not necessary to specify it, but it can be used to skip automatic driver
 detection, when it fails to select the appropriate driver.
@@ -297,6 +308,24 @@ Note that it does not force those drivers to open the dataset. In particular,
 some drivers have requirements on file extensions.
 .sp
 May be repeated.
+.UNINDENT
+.sp
+Added in version 3.12.
+
+.SH GDALG OUTPUT (ON-THE-FLY / STREAMED DATASET)
+.sp
+This program supports serializing the command line as a JSON file using the \fBGDALG\fP output format.
+The resulting file can then be opened as a raster dataset using the
+\fI\%GDALG: GDAL Streamed Algorithm\fP driver, and apply the specified pipeline in a on\-the\-fly /
+streamed way.
+.sp
+\fBNOTE:\fP
+.INDENT 0.0
+.INDENT 3.5
+However this algorithm is not natively streaming compatible. Consequently a
+temporary dataset will be generated, which may cause significant processing
+time at opening.
+.UNINDENT
 .UNINDENT
 .SH EXAMPLES
 .SS Example 1: Burn a shapefile into a raster

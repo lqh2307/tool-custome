@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-RASTER-INFO" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-RASTER-INFO" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-raster-info \- Get information on a raster dataset
 .sp
@@ -51,7 +51,7 @@ Common Options:
   \-\-config <KEY>=<VALUE>                               Configuration option [may be repeated]
 
 Options:
-  \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>  Output format. OUTPUT\-FORMAT=json|text (default: json)
+  \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>  Output format. OUTPUT\-FORMAT=json|text
   \-\-mm, \-\-min\-max                                      Compute minimum and maximum value
   \-\-stats                                              Retrieve or compute statistics, using all pixels
                                                        Mutually exclusive with \-\-approx\-stats
@@ -60,8 +60,8 @@ Options:
   \-\-hist                                               Retrieve or compute histogram
 
 Advanced Options:
-  \-\-oo, \-\-open\-option <KEY>=<VALUE>                    Open options [may be repeated]
   \-\-if, \-\-input\-format <INPUT\-FORMAT>                  Input formats [may be repeated]
+  \-\-oo, \-\-open\-option <KEY>=<VALUE>                    Open options [may be repeated]
   \-\-no\-gcp                                             Suppress ground control points list printing
   \-\-no\-md                                              Suppress metadata printing
   \-\-no\-ct                                              Suppress color table printing
@@ -122,12 +122,16 @@ Band unit type (i.e.. \(dqmeters\(dq or \(dqfeet\(dq for elevation bands).
 Band pseudo\-color tables.
 .UNINDENT
 .sp
+Starting with GDAL 3.12, \fBgdal raster info\fP can be used as the last
+step of a pipeline.
+.sp
 The following options are available:
 .SS Standard options
 .INDENT 0.0
 .TP
 .B \-f, \-\-of, \-\-format, \-\-output\-format json|text
-Which output format to use. Default is JSON.
+Which output format to use. Default is JSON, and starting with GDAL 3.12,
+text when invoked from command line.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -157,14 +161,14 @@ Report histogram information for all bands.
 .SS Advanced options
 .INDENT 0.0
 .TP
-.B \-\-oo <NAME>=<VALUE>
+.B \-\-oo, \-\-open\-option <NAME>=<VALUE>
 Dataset open option (format specific).
 .sp
 May be repeated.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-if <format>
+.B \-\-if, \-\-input\-format <format>
 Format/driver name to be attempted to open the input file(s). It is generally
 not necessary to specify it, but it can be used to skip automatic driver
 detection, when it fails to select the appropriate driver.
@@ -191,11 +195,6 @@ metadata strings.
 .TP
 .B \-\-no\-ct
 Suppress printing of color table.
-.UNINDENT
-.INDENT 0.0
-.TP
-.B \-\-no\-rat
-Suppress printing of raster attribute table.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -243,12 +242,73 @@ a subdataset with specified \fBn\fP number (starting from 1).
 This is an alternative of giving the full subdataset name.
 .UNINDENT
 .SH EXAMPLES
-.SS Example 1: Getting information on the file \fButmsmall.tif\fP as JSON output
+.SS Example 1: Getting information on the file \fButmsmall.tif\fP as text output
 .INDENT 0.0
 .INDENT 3.5
 .sp
 .EX
 $ gdal raster info utmsmall.tif
+Driver: GTiff/GeoTIFF
+Files: utmsmall.tif
+Size is 100, 100
+Coordinate System is:
+PROJCRS[\(dqNAD27 / UTM zone 11N\(dq,
+    BASEGEOGCRS[\(dqNAD27\(dq,
+        DATUM[\(dqNorth American Datum 1927\(dq,
+            ELLIPSOID[\(dqClarke 1866\(dq,6378206.4,294.978698213898,
+                LENGTHUNIT[\(dqmetre\(dq,1]]],
+        PRIMEM[\(dqGreenwich\(dq,0,
+            ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
+        ID[\(dqEPSG\(dq,4267]],
+    CONVERSION[\(dqTransverse Mercator\(dq,
+        METHOD[\(dqTransverse Mercator\(dq,
+            ID[\(dqEPSG\(dq,9807]],
+        PARAMETER[\(dqLatitude of natural origin\(dq,0,
+            ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433],
+            ID[\(dqEPSG\(dq,8801]],
+        PARAMETER[\(dqLongitude of natural origin\(dq,\-117,
+            ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433],
+            ID[\(dqEPSG\(dq,8802]],
+        PARAMETER[\(dqScale factor at natural origin\(dq,0.9996,
+            SCALEUNIT[\(dqunity\(dq,1],
+            ID[\(dqEPSG\(dq,8805]],
+        PARAMETER[\(dqFalse easting\(dq,500000,
+            LENGTHUNIT[\(dqmetre\(dq,1],
+            ID[\(dqEPSG\(dq,8806]],
+        PARAMETER[\(dqFalse northing\(dq,0,
+            LENGTHUNIT[\(dqmetre\(dq,1],
+            ID[\(dqEPSG\(dq,8807]]],
+    CS[Cartesian,2],
+        AXIS[\(dqeasting\(dq,east,
+            ORDER[1],
+            LENGTHUNIT[\(dqmetre\(dq,1]],
+        AXIS[\(dqnorthing\(dq,north,
+            ORDER[2],
+            LENGTHUNIT[\(dqmetre\(dq,1]],
+    ID[\(dqEPSG\(dq,26711]]
+Data axis to CRS axis mapping: 1,2
+Origin = (440720.000000000000000,3751320.000000000000000)
+Pixel Size = (60.000000000000000,\-60.000000000000000)
+Metadata:
+  AREA_OR_POINT=Area
+Image Structure Metadata:
+  INTERLEAVE=BAND
+Corner Coordinates:
+Upper Left  (  440720.000, 3751320.000) (117d38\(aq28.21\(dqW, 33d54\(aq 8.47\(dqN)
+Lower Left  (  440720.000, 3745320.000) (117d38\(aq26.75\(dqW, 33d50\(aq53.66\(dqN)
+Upper Right (  446720.000, 3751320.000) (117d34\(aq34.59\(dqW, 33d54\(aq 9.62\(dqN)
+Lower Right (  446720.000, 3745320.000) (117d34\(aq33.28\(dqW, 33d50\(aq54.82\(dqN)
+Center      (  443720.000, 3748320.000) (117d36\(aq30.71\(dqW, 33d52\(aq31.66\(dqN)
+Band 1 Block=100x81 Type=Byte, ColorInterp=Gray
+.EE
+.UNINDENT
+.UNINDENT
+.SS Example 2: Getting information on the file \fButmsmall.tif\fP as JSON output, including statistics
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+$ gdal raster info \-\-format=JSON \-\-stats utmsmall.tif
 {
   \(dqdescription\(dq:\(dqutmsmall.tif\(dq,
   \(dqdriverShortName\(dq:\(dqGTiff\(dq,
@@ -341,7 +401,18 @@ $ gdal raster info utmsmall.tif
       ],
       \(dqtype\(dq:\(dqByte\(dq,
       \(dqcolorInterpretation\(dq:\(dqGray\(dq,
+      \(dqminimum\(dq:0.0,
+      \(dqmaximum\(dq:255.0,
+      \(dqmean\(dq:154.621,
+      \(dqstdDev\(dq:54.251,
       \(dqmetadata\(dq:{
+        \(dq\(dq:{
+          \(dqSTATISTICS_MINIMUM\(dq:\(dq0\(dq,
+          \(dqSTATISTICS_MAXIMUM\(dq:\(dq255\(dq,
+          \(dqSTATISTICS_MEAN\(dq:\(dq154.6212\(dq,
+          \(dqSTATISTICS_STDDEV\(dq:\(dq54.250980733624\(dq,
+          \(dqSTATISTICS_VALID_PERCENT\(dq:\(dq100\(dq
+        }
       }
     }
   ],
@@ -357,7 +428,6 @@ $ gdal raster info utmsmall.tif
       \(dqtype\(dq:\(dqProjectedCRS\(dq,
       \(dqname\(dq:\(dqNAD27 / UTM zone 11N\(dq,
       \(dqbase_crs\(dq:{
-        \(dqtype\(dq:\(dqGeographicCRS\(dq,
         \(dqname\(dq:\(dqNAD27\(dq,
         \(dqdatum\(dq:{
           \(dqtype\(dq:\(dqGeodeticReferenceFrame\(dq,
@@ -470,16 +540,22 @@ $ gdal raster info utmsmall.tif
       }
     },
     \(dqproj:transform\(dq:[
-      440720.0,
       60.0,
       0.0,
-      3751320.0,
+      440720.0,
       0.0,
-      \-60.0
+      \-60.0,
+      3751320.0
     ],
     \(dqraster:bands\(dq:[
       {
-        \(dqdata_type\(dq:\(dquint8\(dq
+        \(dqdata_type\(dq:\(dquint8\(dq,
+        \(dqstats\(dq:{
+          \(dqminimum\(dq:0.0,
+          \(dqmaximum\(dq:255.0,
+          \(dqmean\(dq:154.621,
+          \(dqstddev\(dq:54.251
+        }
       }
     ],
     \(dqeo:bands\(dq:[
@@ -490,74 +566,6 @@ $ gdal raster info utmsmall.tif
     ]
   }
 }
-.EE
-.UNINDENT
-.UNINDENT
-.SS Example 2: Getting information on the file \fButmsmall.tif\fP as text output, including statistics
-.INDENT 0.0
-.INDENT 3.5
-.sp
-.EX
-$ gdal raster info \-\-format=text \-\-stats utmsmall.tif
-Driver: GTiff/GeoTIFF
-Files: utmsmall.tif
-Size is 100, 100
-Coordinate System is:
-PROJCRS[\(dqNAD27 / UTM zone 11N\(dq,
-    BASEGEOGCRS[\(dqNAD27\(dq,
-        DATUM[\(dqNorth American Datum 1927\(dq,
-            ELLIPSOID[\(dqClarke 1866\(dq,6378206.4,294.978698213898,
-                LENGTHUNIT[\(dqmetre\(dq,1]]],
-        PRIMEM[\(dqGreenwich\(dq,0,
-            ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
-        ID[\(dqEPSG\(dq,4267]],
-    CONVERSION[\(dqTransverse Mercator\(dq,
-        METHOD[\(dqTransverse Mercator\(dq,
-            ID[\(dqEPSG\(dq,9807]],
-        PARAMETER[\(dqLatitude of natural origin\(dq,0,
-            ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433],
-            ID[\(dqEPSG\(dq,8801]],
-        PARAMETER[\(dqLongitude of natural origin\(dq,\-117,
-            ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433],
-            ID[\(dqEPSG\(dq,8802]],
-        PARAMETER[\(dqScale factor at natural origin\(dq,0.9996,
-            SCALEUNIT[\(dqunity\(dq,1],
-            ID[\(dqEPSG\(dq,8805]],
-        PARAMETER[\(dqFalse easting\(dq,500000,
-            LENGTHUNIT[\(dqmetre\(dq,1],
-            ID[\(dqEPSG\(dq,8806]],
-        PARAMETER[\(dqFalse northing\(dq,0,
-            LENGTHUNIT[\(dqmetre\(dq,1],
-            ID[\(dqEPSG\(dq,8807]]],
-    CS[Cartesian,2],
-        AXIS[\(dqeasting\(dq,east,
-            ORDER[1],
-            LENGTHUNIT[\(dqmetre\(dq,1]],
-        AXIS[\(dqnorthing\(dq,north,
-            ORDER[2],
-            LENGTHUNIT[\(dqmetre\(dq,1]],
-    ID[\(dqEPSG\(dq,26711]]
-Data axis to CRS axis mapping: 1,2
-Origin = (440720.000000000000000,3751320.000000000000000)
-Pixel Size = (60.000000000000000,\-60.000000000000000)
-Metadata:
-  AREA_OR_POINT=Area
-Image Structure Metadata:
-  INTERLEAVE=BAND
-Corner Coordinates:
-Upper Left  (  440720.000, 3751320.000) (117d38\(aq28.21\(dqW, 33d54\(aq 8.47\(dqN)
-Lower Left  (  440720.000, 3745320.000) (117d38\(aq26.75\(dqW, 33d50\(aq53.66\(dqN)
-Upper Right (  446720.000, 3751320.000) (117d34\(aq34.59\(dqW, 33d54\(aq 9.62\(dqN)
-Lower Right (  446720.000, 3745320.000) (117d34\(aq33.28\(dqW, 33d50\(aq54.82\(dqN)
-Center      (  443720.000, 3748320.000) (117d36\(aq30.71\(dqW, 33d52\(aq31.66\(dqN)
-Band 1 Block=100x81 Type=Byte, ColorInterp=Gray
-  Minimum=0.000, Maximum=255.000, Mean=154.621, StdDev=54.251
-  Metadata:
-    STATISTICS_MINIMUM=0
-    STATISTICS_MAXIMUM=255
-    STATISTICS_MEAN=154.6212
-    STATISTICS_STDDEV=54.250980733624
-    STATISTICS_VALID_PERCENT=100
 .EE
 .UNINDENT
 .UNINDENT

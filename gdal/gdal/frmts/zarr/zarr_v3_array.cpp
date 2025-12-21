@@ -74,12 +74,12 @@ ZarrV3Array::~ZarrV3Array()
 /*                                Flush()                               */
 /************************************************************************/
 
-void ZarrV3Array::Flush()
+bool ZarrV3Array::Flush()
 {
     if (!m_bValid)
-        return;
+        return true;
 
-    ZarrV3Array::FlushDirtyTile();
+    bool ret = ZarrV3Array::FlushDirtyTile();
 
     if (!m_aoDims.empty())
     {
@@ -112,16 +112,19 @@ void ZarrV3Array::Flush()
 
     if (m_bDefinitionModified)
     {
-        Serialize(oAttrs);
+        if (!Serialize(oAttrs))
+            ret = false;
         m_bDefinitionModified = false;
     }
+
+    return ret;
 }
 
 /************************************************************************/
 /*                    ZarrV3Array::Serialize()                          */
 /************************************************************************/
 
-void ZarrV3Array::Serialize(const CPLJSONObject &oAttrs)
+bool ZarrV3Array::Serialize(const CPLJSONObject &oAttrs)
 {
     CPLJSONDocument oDoc;
     CPLJSONObject oRoot = oDoc.GetRoot();
@@ -238,7 +241,7 @@ void ZarrV3Array::Serialize(const CPLJSONObject &oAttrs)
 
     // TODO: codecs
 
-    oDoc.Save(m_osFilename);
+    return oDoc.Save(m_osFilename);
 }
 
 /************************************************************************/
@@ -390,37 +393,21 @@ bool ZarrV3Array::LoadTileData(const uint64_t *tileIndices, bool bUseMutex,
                      ->GetStreamingFilename(osFilename);
 
     // First if we have a tile presence cache, check tile presence from it
+    bool bEarlyRet;
     if (bUseMutex)
-        m_oMutex.lock();
-    auto poTilePresenceArray = OpenTilePresenceCache(false);
-    if (poTilePresenceArray)
     {
-        std::vector<GUInt64> anTileIdx(m_aoDims.size());
-        const std::vector<size_t> anCount(m_aoDims.size(), 1);
-        const std::vector<GInt64> anArrayStep(m_aoDims.size(), 0);
-        const std::vector<GPtrDiff_t> anBufferStride(m_aoDims.size(), 0);
-        const auto eByteDT = GDALExtendedDataType::Create(GDT_Byte);
-        for (size_t i = 0; i < m_aoDims.size(); ++i)
-        {
-            anTileIdx[i] = static_cast<GUInt64>(tileIndices[i]);
-        }
-        GByte byValue = 0;
-        if (poTilePresenceArray->Read(anTileIdx.data(), anCount.data(),
-                                      anArrayStep.data(), anBufferStride.data(),
-                                      eByteDT, &byValue) &&
-            byValue == 0)
-        {
-            if (bUseMutex)
-                m_oMutex.unlock();
-            CPLDebugOnly(ZARR_DEBUG_KEY, "Tile %s missing (=nodata)",
-                         osFilename.c_str());
-            bMissingTileOut = true;
-            return true;
-        }
+        std::lock_guard<std::mutex> oLock(m_oMutex);
+        bEarlyRet = IsTileMissingFromCacheInfo(osFilename, tileIndices);
     }
-    if (bUseMutex)
-        m_oMutex.unlock();
-
+    else
+    {
+        bEarlyRet = IsTileMissingFromCacheInfo(osFilename, tileIndices);
+    }
+    if (bEarlyRet)
+    {
+        bMissingTileOut = true;
+        return true;
+    }
     VSILFILE *fp = nullptr;
     // This is the number of files returned in a S3 directory listing operation
     constexpr uint64_t MAX_TILES_ALLOWED_FOR_DIRECTORY_LISTING = 1000;
@@ -1273,11 +1260,11 @@ ZarrV3Group::LoadArray(const std::string &osArrayName,
                 {
                     // Recurse to upper level for datasets such as
                     // /vsis3/hrrrzarr/sfc/20210809/20210809_00z_anl.zarr/0.1_sigma_level/HAIL_max_fcst/0.1_sigma_level/HAIL_max_fcst
-                    const std::string osDirNameNew =
+                    std::string osDirNameNew =
                         CPLGetPathSafe(osDirName.c_str());
                     if (!osDirNameNew.empty() && osDirNameNew != osDirName)
                     {
-                        osDirName = osDirNameNew;
+                        osDirName = std::move(osDirNameNew);
                         continue;
                     }
                 }
@@ -1601,7 +1588,7 @@ ZarrV3Group::LoadArray(const std::string &osArrayName,
             "COMPRESSOR", oCodecs[oCodecs.Size() - 1].ToString().c_str());
     }
     if (poCodecs)
-        poArray->SetCodecs(std::move(poCodecs));
+        poArray->SetCodecs(oCodecs, std::move(poCodecs));
     RegisterArray(poArray);
 
     // If this is an indexing variable, attach it to the dimension.
@@ -1621,4 +1608,75 @@ ZarrV3Group::LoadArray(const std::string &osArrayName,
     }
 
     return poArray;
+}
+
+/************************************************************************/
+/*                   ZarrV3Array::GetRawBlockInfoInfo()                 */
+/************************************************************************/
+
+CPLStringList ZarrV3Array::GetRawBlockInfoInfo() const
+{
+    CPLStringList aosInfo(m_aosStructuralInfo);
+    if (m_oType.GetSize() > 1)
+    {
+        // By default, assume that the ENDIANNESS is the native one.
+        // Otherwise there will be a ZarrV3CodecBytes instance.
+#if CPL_IS_LSB
+        aosInfo.SetNameValue("ENDIANNESS", "LITTLE");
+#else
+        aosInfo.SetNameValue("ENDIANNESS", "BIG");
+#endif
+    }
+
+    if (m_poCodecs)
+    {
+        bool bHasOtherCodec = false;
+        for (const auto &poCodec : m_poCodecs->GetCodecs())
+        {
+            if (poCodec->GetName() == ZarrV3CodecBytes::NAME &&
+                m_oType.GetSize() > 1)
+            {
+                auto poBytesCodec =
+                    dynamic_cast<const ZarrV3CodecBytes *>(poCodec.get());
+                if (poBytesCodec)
+                {
+                    if (poBytesCodec->IsLittle())
+                        aosInfo.SetNameValue("ENDIANNESS", "LITTLE");
+                    else
+                        aosInfo.SetNameValue("ENDIANNESS", "BIG");
+                }
+            }
+            else if (poCodec->GetName() == ZarrV3CodecTranspose::NAME &&
+                     m_aoDims.size() > 1)
+            {
+                auto poTransposeCodec =
+                    dynamic_cast<const ZarrV3CodecTranspose *>(poCodec.get());
+                if (poTransposeCodec && !poTransposeCodec->IsNoOp())
+                {
+                    const auto &anOrder = poTransposeCodec->GetOrder();
+                    const int nDims = static_cast<int>(anOrder.size());
+                    std::string osOrder("[");
+                    for (int i = 0; i < nDims; ++i)
+                    {
+                        if (i > 0)
+                            osOrder += ',';
+                        osOrder += std::to_string(anOrder[i]);
+                    }
+                    osOrder += ']';
+                    aosInfo.SetNameValue("TRANSPOSE_ORDER", osOrder.c_str());
+                }
+            }
+            else if (poCodec->GetName() != ZarrV3CodecGZip::NAME &&
+                     poCodec->GetName() != ZarrV3CodecBlosc::NAME &&
+                     poCodec->GetName() != ZarrV3CodecZstd::NAME)
+            {
+                bHasOtherCodec = true;
+            }
+        }
+        if (bHasOtherCodec)
+        {
+            aosInfo.SetNameValue("CODECS", m_oJSONCodecs.ToString().c_str());
+        }
+    }
+    return aosInfo;
 }

@@ -46,8 +46,10 @@ fi
 CPPCHECK_VERSION_GT_2_7=$(expr "$CPPCHECK_VERSION" \>= 207 || /bin/true)
 if test "$CPPCHECK_VERSION_GT_2_7" = 1; then
     POSIX="--library=gnu"
+    OLD_CPPCHECK=
 else
     POSIX="--std=posix"
+    OLD_CPPCHECK=-DOLD_CPPCHECK
 fi
 
 echo "" > ${LOG_FILE}
@@ -80,7 +82,7 @@ for dirname in alg port gcore ogr frmts gnm apps fuzzers; do
         -Dva_copy=va_start \
         -D__cplusplus=201703 \
         -DVSIRealloc=realloc \
-        -DCPPCHECK \
+        -DCPPCHECK ${OLD_CPPCHECK} \
         -DDEBUG_MUTEX \
         -DDEBUG_PROXY_POOL \
         ${OVERRIDE} \
@@ -186,10 +188,6 @@ mv ${LOG_FILE}.tmp ${LOG_FILE}
 grep -v -e "ogrlinestring.cpp:.*warning,accessMoved"  ${LOG_FILE} > ${LOG_FILE}.tmp
 mv ${LOG_FILE}.tmp ${LOG_FILE}
 grep -v -e "ogrgeometrycollection.cpp:.*warning,accessMoved"  ${LOG_FILE} > ${LOG_FILE}.tmp
-mv ${LOG_FILE}.tmp ${LOG_FILE}
-
-# Ignore dangerousTypeCast (with cppcheck master), although we should fix them by enabling STRONG_CXX_WFLAGS
-grep -v -e "dangerousTypeCast" ${LOG_FILE} > ${LOG_FILE}.tmp
 mv ${LOG_FILE}.tmp ${LOG_FILE}
 
 if grep "null pointer" ${LOG_FILE} ; then

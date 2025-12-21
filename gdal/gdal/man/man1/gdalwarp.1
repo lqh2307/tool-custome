@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALWARP" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDALWARP" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdalwarp \- Image reprojection and warping utility.
 .SH SYNOPSIS
@@ -160,8 +160,7 @@ OGRSpatialReference.SetFromUserInput() call, which includes EPSG Projected,
 Geographic or Compound CRS (i.e. EPSG:4296), a well known text (WKT) CRS definition,
 PROJ.4 declarations, or the name of a .prj file containing a WKT CRS definition.
 .sp
-Starting with GDAL 2.2, if the SRS has an explicit
-vertical datum that points to a PROJ.4 geoidgrids, and the input dataset is a
+If the SRS has an explicit vertical datum that points to a geoid grid, and the input dataset is a
 single band dataset, a vertical correction will be applied to the values of the
 dataset.
 .UNINDENT
@@ -192,8 +191,7 @@ OGRSpatialReference.SetFromUserInput() call, which includes EPSG Projected,
 Geographic or Compound CRS (i.e. EPSG:4296), a well known text (WKT) CRS definition,
 PROJ.4 declarations, or the name of a .prj file containing a WKT CRS definition.
 .sp
-Starting with GDAL 2.2, if the SRS has an explicit
-vertical datum that points to a PROJ.4 geoidgrids, and the input dataset is a
+If the SRS has an explicit vertical datum that points to a geoid grid, and the input dataset is a
 single band dataset, a vertical correction will be applied to the values of the
 dataset.
 .UNINDENT
@@ -256,7 +254,7 @@ an explicit vertical datum, and the input dataset is a single band dataset.
 \fBNOTE:\fP
 .INDENT 7.0
 .INDENT 3.5
-this option was named \fB\-novshiftgrid\fP in GDAL 2.2 to 3.3.
+this option was named \fB\-novshiftgrid\fP until GDAL 3.3.
 .UNINDENT
 .UNINDENT
 .sp
@@ -472,9 +470,6 @@ considered as a source alpha band.
 .B \-nosrcalpha
 Prevent the alpha band of a source image to be
 considered as such (it will be warped as a regular band)
-.sp
-Added in version 2.2.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -533,9 +528,8 @@ Added in version 3.2.
 .INDENT 0.0
 .TP
 .B \-of <format>
-Select the output format. Starting with GDAL 2.3, if not specified, the
-format is guessed from the extension (previously was GTiff). Use the short
-format name.
+Select the output format. If not specified, the format is guessed from the
+extension. Use the short format name.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -630,9 +624,6 @@ Dataset open option (format specific)
 .TP
 .B \-doo <NAME>=<VALUE>
 Output dataset open option (format specific)
-.sp
-Added in version 2.1.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -948,12 +939,6 @@ gdalwarp \-t_srs \(aq+proj=utm +zone=11 +datum=WGS84\(aq \-overwrite raw_spot.ti
 For instance, the second channel of an ASTER image stored in HDF with
 control points mapping the corners to lat/long could be warped to a UTM
 projection with a command like this:
-.INDENT 2.0
-.INDENT 3.5
-Added in version 2.2.
-
-.UNINDENT
-.UNINDENT
 .UNINDENT
 .INDENT 0.0
 .INDENT 3.5
@@ -991,12 +976,6 @@ id,WKT
 .INDENT 0.0
 .IP \(bu 2
 To transform a DEM from geoid elevations (using EGM96) to WGS84 ellipsoidal heights:
-.INDENT 2.0
-.INDENT 3.5
-Added in version 2.2.
-
-.UNINDENT
-.UNINDENT
 .UNINDENT
 .INDENT 0.0
 .INDENT 3.5

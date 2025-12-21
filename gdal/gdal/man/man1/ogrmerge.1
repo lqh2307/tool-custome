@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "OGRMERGE" "1" "Sep 04, 2025" "" "GDAL"
+.TH "OGRMERGE" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 ogrmerge \-  Merge several vector datasets into a single one.
 .SH SYNOPSIS
@@ -60,9 +60,6 @@ Options specific to the \fI\%\-single\fP option:
 .UNINDENT
 .SH DESCRIPTION
 .sp
-Added in version 2.2.
-
-.sp
 \fBogrmerge\fP takes as input several vector datasets,
 each of them having one or several vector layers, and copies them into
 a target dataset.
@@ -79,7 +76,7 @@ assumes that the schema of those vector layers is more or less the
 same.
 .UNINDENT
 .sp
-Internally this generates a \fI\%VRT \-\- Virtual Format\fP file, and if the
+Internally this generates a \fI\%VRT \-\- OGR Virtual Format\fP file, and if the
 output format is not VRT, final translation is done with \fBogr2ogr\fP
 or \fBgdal.VectorTranslate()\fP\&. So, for advanced uses, output to VRT,
 potential manual editing of it and \fBogr2ogr\fP can be done.
@@ -88,6 +85,13 @@ potential manual editing of it and \fBogr2ogr\fP can be done.
 .INDENT 0.0
 .INDENT 3.5
 ogrmerge is a Python utility, and is only available if GDAL Python bindings are available.
+.UNINDENT
+.UNINDENT
+.sp
+\fBNOTE:\fP
+.INDENT 0.0
+.INDENT 3.5
+Starting with GDAL 3.11, a newer \fI\%gdal vector concat\fP program is available.
 .UNINDENT
 .UNINDENT
 .INDENT 0.0
@@ -113,7 +117,7 @@ One or several input vector datasets. Required
 .INDENT 0.0
 .TP
 .B \-f <format>
-Select the output format. Starting with GDAL 2.3, if not specified,
+Select the output format. If not specified,
 the format is guessed from the extension (previously was ESRI
 Shapefile). Use the short format name
 .UNINDENT

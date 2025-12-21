@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-VSI-COPY" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-VSI-COPY" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-vsi-copy \- Copy files located on GDAL Virtual System Interface (VSI)
 .sp
@@ -50,7 +50,7 @@ Common Options:
   \-h, \-\-help                   Display help message and exit
   \-\-json\-usage                 Display usage as JSON document and exit
   \-\-config <KEY>=<VALUE>       Configuration option [may be repeated]
-  \-\-progress                   Display progress bar
+  \-q, \-\-quiet                  Quiet mode (no progress bar)
 
 Options:
   \-r, \-\-recursive              Copy subdirectories recursively
@@ -87,12 +87,12 @@ $ gdal vsi copy \-r /vsis3/bucket/my_dir .
 .EE
 .UNINDENT
 .UNINDENT
-.SS Example 2: Copy recursively files from /vsis3/bucket/my_dir to local directory, \fIwithout\fP creating a my_dir directory, and with progress bar
+.SS Example 2: Copy recursively files from /vsis3/bucket/my_dir to local directory, \fIwithout\fP creating a my_dir directory, without progress bar
 .INDENT 0.0
 .INDENT 3.5
 .sp
 .EX
-$ gdal vsi copy \-\-progress \-r /vsis3/bucket/my_dir/* .
+$ gdal vsi copy \-\-quiet \-r /vsis3/bucket/my_dir/* .
 .EE
 .UNINDENT
 .UNINDENT

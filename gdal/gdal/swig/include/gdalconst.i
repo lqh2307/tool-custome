@@ -167,11 +167,19 @@
 %constant CPLE_UserInterrupt              = CPLE_UserInterrupt;
 %constant CPLE_ObjectNull                 = CPLE_ObjectNull;
 %constant CPLE_HttpResponse               = CPLE_HttpResponse;
-%constant CPLE_AWSBucketNotFound          = CPLE_AWSBucketNotFound;
-%constant CPLE_AWSObjectNotFound          = CPLE_AWSObjectNotFound;
-%constant CPLE_AWSAccessDenied            = CPLE_AWSAccessDenied;
-%constant CPLE_AWSInvalidCredentials      = CPLE_AWSInvalidCredentials;
-%constant CPLE_AWSSignatureDoesNotMatch   = CPLE_AWSSignatureDoesNotMatch;
+%constant CPLE_BucketNotFound             = CPLE_BucketNotFound;
+%constant CPLE_ObjectNotFound             = CPLE_ObjectNotFound;
+%constant CPLE_AccessDenied               = CPLE_AccessDenied;
+%constant CPLE_InvalidCredentials         = CPLE_InvalidCredentials;
+%constant CPLE_SignatureDoesNotMatch      = CPLE_SignatureDoesNotMatch;
+%constant CPLE_ObjectStorageGenericError  = CPLE_ObjectStorageGenericError;
+
+// Deprecated values
+%constant CPLE_AWSBucketNotFound          = CPLE_BucketNotFound;
+%constant CPLE_AWSObjectNotFound          = CPLE_ObjectNotFound;
+%constant CPLE_AWSAccessDenied            = CPLE_AccessDenied;
+%constant CPLE_AWSInvalidCredentials      = CPLE_InvalidCredentials;
+%constant CPLE_AWSSignatureDoesNotMatch   = CPLE_SignatureDoesNotMatch;
 
 // Open flags
 %constant OF_ALL     = GDAL_OF_ALL;
@@ -194,6 +202,7 @@
 %constant char *DMD_CONNECTION_PREFIX  = GDAL_DMD_CONNECTION_PREFIX;
 %constant char *DMD_EXTENSIONS         = GDAL_DMD_EXTENSIONS;
 %constant char *DMD_CREATIONOPTIONLIST = GDAL_DMD_CREATIONOPTIONLIST;
+%constant char *DMD_OVERVIEW_CREATIONOPTIONLIST = GDAL_DMD_OVERVIEW_CREATIONOPTIONLIST;
 %constant char *DMD_MULTIDIM_DATASET_CREATIONOPTIONLIST         = GDAL_DMD_MULTIDIM_DATASET_CREATIONOPTIONLIST;
 %constant char *DMD_MULTIDIM_GROUP_CREATIONOPTIONLIST         = GDAL_DMD_MULTIDIM_GROUP_CREATIONOPTIONLIST;
 %constant char *DMD_MULTIDIM_DIMENSION_CREATIONOPTIONLIST         = GDAL_DMD_MULTIDIM_DIMENSION_CREATIONOPTIONLIST;
@@ -212,13 +221,16 @@
 %constant char *DMD_SUPPORTED_SQL_DIALECTS    = GDAL_DMD_SUPPORTED_SQL_DIALECTS;
 %constant char *DMD_NUMERIC_FIELD_WIDTH_INCLUDES_DECIMAL_SEPARATOR = GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_DECIMAL_SEPARATOR;
 %constant char *DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN = GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN;
+%constant char *DMD_MAX_STRING_LENGTH = GDAL_DMD_MAX_STRING_LENGTH;
 
 %constant char *DCAP_OPEN       = GDAL_DCAP_OPEN;
 %constant char *DCAP_CREATE     = GDAL_DCAP_CREATE;
 %constant char *DCAP_CREATE_MULTIDIMENSIONAL     = GDAL_DCAP_CREATE_MULTIDIMENSIONAL;
 %constant char *DCAP_CREATECOPY = GDAL_DCAP_CREATECOPY;
+%constant char *DCAP_CREATE_ONLY_VISIBLE_AT_CLOSE_TIME = GDAL_DCAP_CREATE_ONLY_VISIBLE_AT_CLOSE_TIME;
 %constant char *DCAP_CREATECOPY_MULTIDIMENSIONAL = GDAL_DCAP_CREATECOPY_MULTIDIMENSIONAL;
 %constant char *DCAP_MULTIDIM_RASTER = GDAL_DCAP_MULTIDIM_RASTER;
+%constant char *DCAP_APPEND     = GDAL_DCAP_APPEND;
 %constant char *DCAP_UPDATE     = GDAL_DCAP_UPDATE;
 %constant char *DCAP_SUBCREATECOPY = GDAL_DCAP_SUBCREATECOPY;
 %constant char *DCAP_VIRTUALIO  = GDAL_DCAP_VIRTUALIO;
@@ -255,6 +267,7 @@
 %constant char *GDAL_DMD_RELATIONSHIP_RELATED_TABLE_TYPES    = GDAL_DMD_RELATIONSHIP_RELATED_TABLE_TYPES;
 %constant char *DCAP_RENAME_LAYERS    = GDAL_DCAP_RENAME_LAYERS;
 %constant char *DCAP_FLUSHCACHE_CONSISTENT_STATE    = GDAL_DCAP_FLUSHCACHE_CONSISTENT_STATE;
+%constant char *DCAP_UPSERT = GDAL_DCAP_UPSERT;
 
 %constant char *DIM_TYPE_HORIZONTAL_X       = GDAL_DIM_TYPE_HORIZONTAL_X;
 %constant char *DIM_TYPE_HORIZONTAL_Y       = GDAL_DIM_TYPE_HORIZONTAL_Y;
@@ -265,6 +278,8 @@
 %constant char *GDsCAddRelationship    = "AddRelationship";
 %constant char *GDsCDeleteRelationship = "DeleteRelationship";
 %constant char *GDsCUpdateRelationship = "UpdateRelationship";
+%constant char *GDsCFastGetExtent = "FastGetExtent";
+%constant char *GDsCFastGetExtentWGS84LongLat = "FastGetExtentWGS84LongLat";
 
 #else
 
@@ -288,6 +303,8 @@
 #define GDAL_DMD_EXTENSIONS "DMD_EXTENSIONS"
 #define DMD_CREATIONOPTIONLIST "DMD_CREATIONOPTIONLIST"
 #define GDAL_DMD_CREATIONOPTIONLIST "DMD_CREATIONOPTIONLIST"
+#define DMD_OVERVIEW_CREATIONOPTIONLIST "DMD_OVERVIEW_CREATIONOPTIONLIST"
+#define GDAL_DMD_OVERVIEW_CREATIONOPTIONLIST "DMD_OVERVIEW_CREATIONOPTIONLIST"
 #define DMD_MULTIDIM_DATASET_CREATIONOPTIONLIST "DMD_MULTIDIM_DATASET_CREATIONOPTIONLIST"
 #define GDAL_DMD_MULTIDIM_DATASET_CREATIONOPTIONLIST "DMD_MULTIDIM_DATASET_CREATIONOPTIONLIST"
 #define DMD_MULTIDIM_GROUP_CREATIONOPTIONLIST "DMD_MULTIDIM_GROUP_CREATIONOPTIONLIST"
@@ -324,6 +341,8 @@
 #define GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_DECIMAL_SEPARATOR "DMD_NUMERIC_FIELD_WIDTH_INCLUDES_DECIMAL_SEPARATOR"
 #define DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN "DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN"
 #define GDAL_DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN "DMD_NUMERIC_FIELD_WIDTH_INCLUDES_SIGN"
+#define DMD_MAX_STRING_LENGTH "DMD_MAX_STRING_LENGTH"
+#define GDAL_DMD_MAX_STRING_LENGTH "DMD_MAX_STRING_LENGTH"
 
 #define DCAP_OPEN       "DCAP_OPEN"
 #define GDAL_DCAP_OPEN       "DCAP_OPEN"
@@ -333,6 +352,9 @@
 #define GDAL_DCAP_CREATE_MULTIDIMENSIONAL "DCAP_CREATE_MULTIDIMENSIONAL"
 #define DCAP_CREATECOPY "DCAP_CREATECOPY"
 #define GDAL_DCAP_CREATECOPY "DCAP_CREATECOPY"
+#define DCAP_CREATE_ONLY_VISIBLE_AT_CLOSE_TIME "DCAP_CREATE_ONLY_VISIBLE_AT_CLOSE_TIME"
+#define GDAL_DCAP_CREATE_ONLY_VISIBLE_AT_CLOSE_TIME "DCAP_CREATE_ONLY_VISIBLE_AT_CLOSE_TIME"
+#define DCAP_APPEND     "DCAP_APPEND"
 #define DCAP_UPDATE     "DCAP_UPDATE"
 #define GDAL_DCAP_UPDATE     "DCAP_UPDATE"
 #define DCAP_CREATECOPY_MULTIDIMENSIONAL "DCAP_CREATECOPY_MULTIDIMENSIONAL"
@@ -409,6 +431,8 @@
 #define GDAL_DCAP_RENAME_LAYERS    "DCAP_RENAME_LAYERS"
 #define DCAP_FLUSHCACHE_CONSISTENT_STATE    "DCAP_FLUSHCACHE_CONSISTENT_STATE"
 #define GDAL_DCAP_FLUSHCACHE_CONSISTENT_STATE    "DCAP_FLUSHCACHE_CONSISTENT_STATE"
+#define GDAL_DCAP_UPSERT       "DCAP_UPSERT"
+#define DCAP_UPSERT            "DCAP_UPSERT"
 
 #define DIM_TYPE_HORIZONTAL_X "HORIZONTAL_X"
 #define GDAL_DIM_TYPE_HORIZONTAL_X "HORIZONTAL_X"
@@ -424,6 +448,8 @@
 #define GDsCAddRelationship    "AddRelationship"
 #define GDsCDeleteRelationship "DeleteRelationship"
 #define GDsCUpdateRelationship "UpdateRelationship"
+#define GDsCFastGetExtent "FastGetExtent"
+#define GDsCFastGetExtentWGS84LongLat "FastGetExtentWGS84LongLat"
 
 #endif
 
@@ -439,6 +465,9 @@
 %constant GFT_Integer             = GFT_Integer;
 %constant GFT_Real                = GFT_Real;
 %constant GFT_String              = GFT_String;
+%constant GFT_Boolean             = GFT_Boolean;
+%constant GFT_DateTime            = GFT_DateTime;
+%constant GFT_WKBGeometry         = GFT_WKBGeometry;
 
 // GDALRATFieldUsage
 %constant GFU_Generic             = GFU_Generic;

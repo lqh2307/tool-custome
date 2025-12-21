@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-RASTER-PIXEL-INFO" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-RASTER-PIXEL-INFO" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-raster-pixel-info \- Return information on a pixel of a raster dataset
 .sp
@@ -92,14 +92,14 @@ Which output format to use. Default is GeoJSON.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-oo <NAME>=<VALUE>
+.B \-\-oo, \-\-open\-option <NAME>=<VALUE>
 Dataset open option (format specific).
 .sp
 May be repeated.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-if <format>
+.B \-\-if, \-\-input\-format <format>
 Format/driver name to be attempted to open the input file(s). It is generally
 not necessary to specify it, but it can be used to skip automatic driver
 detection, when it fails to select the appropriate driver.

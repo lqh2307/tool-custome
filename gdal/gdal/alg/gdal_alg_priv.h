@@ -333,7 +333,7 @@ typedef struct
     // GDALRefreshGenImgProjTransformer() must do something or not.
     bool bCheckWithInvertPROJ;
 
-    // Set to TRUE when the transformation pipline is a custom one.
+    // Set to TRUE when the transformation pipeline is a custom one.
     bool bHasCustomTransformationPipeline;
 
 } GDALGenImgProjTransformInfo;
@@ -377,24 +377,36 @@ int GDALDitherRGB2PCTInternal(GDALRasterBandH hRed, GDALRasterBandH hGreen,
  */
 #define MAX_ULPS 10
 
-GBool GDALFloatEquals(float A, float B);
+bool CPL_DLL GDALFloatAlmostEquals(float A, float B,
+                                   unsigned maxUlps = MAX_ULPS);
 
 struct FloatEqualityTest
 {
     bool operator()(float a, float b)
     {
-        return GDALFloatEquals(a, b) == TRUE;
+        return GDALFloatAlmostEquals(a, b);
     }
 };
 
-bool GDALComputeAreaOfInterest(OGRSpatialReference *poSRS, double adfGT[6],
-                               int nXSize, int nYSize,
+bool CPL_DLL GDALDoubleAlmostEquals(double A, double B,
+                                    unsigned maxUlps = MAX_ULPS);
+
+struct DoubleEqualityTest
+{
+    bool operator()(double a, double b)
+    {
+        return GDALDoubleAlmostEquals(a, b);
+    }
+};
+
+bool GDALComputeAreaOfInterest(const OGRSpatialReference *poSRS,
+                               double adfGT[6], int nXSize, int nYSize,
                                double &dfWestLongitudeDeg,
                                double &dfSouthLatitudeDeg,
                                double &dfEastLongitudeDeg,
                                double &dfNorthLatitudeDeg);
 
-bool GDALComputeAreaOfInterest(OGRSpatialReference *poSRS, double dfX1,
+bool GDALComputeAreaOfInterest(const OGRSpatialReference *poSRS, double dfX1,
                                double dfY1, double dfX2, double dfY2,
                                double &dfWestLongitudeDeg,
                                double &dfSouthLatitudeDeg,

@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-CONVERT" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-CONVERT" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-convert \- Convert a dataset
 .sp
@@ -41,7 +41,24 @@ Acts as a shortcut for \fI\%gdal raster convert\fP or
 .INDENT 3.5
 .sp
 .EX
+Usage: gdal convert [OPTIONS] <INPUT> <OUTPUT>
 
+Convert a dataset (shortcut for \(aqgdal raster convert\(aq or \(aqgdal vector convert\(aq).
+
+Positional arguments:
+  \-i, \-\-input <INPUT>                                  Input raster, vector or multidimensional raster dataset [required]
+  \-o, \-\-output <OUTPUT>                                Output raster, vector or multidimensional raster dataset (created by algorithm) [required]
+
+Common Options:
+  \-h, \-\-help                                           Display help message and exit
+  \-\-json\-usage                                         Display usage as JSON document and exit
+  \-\-config <KEY>=<VALUE>                               Configuration option [may be repeated]
+  \-q, \-\-quiet                                          Quiet mode (no progress bar)
+
+Options:
+  \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>  Output format
+
+For all options, run \(aqgdal raster convert \-\-help\(aq or \(aqgdal vector convert \-\-help\(aq
 .EE
 .UNINDENT
 .UNINDENT

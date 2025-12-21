@@ -16,6 +16,7 @@ set(GDAL_PYTHON_CSOURCES
   list(APPEND GDAL_SWIG_COMMON_INTERFACE_FILES
        ${PROJECT_SOURCE_DIR}/swig/include/python/callback.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/gdal_python.i
+       ${PROJECT_SOURCE_DIR}/swig/include/python/generate_gdal_alg_methods.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/gnm_python.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/ogr_python.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/osr_python.i
@@ -23,11 +24,13 @@ set(GDAL_PYTHON_CSOURCES
        ${PROJECT_SOURCE_DIR}/swig/include/python/python_strings.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/typemaps_python.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/docs/gdal_docs.i
+       ${PROJECT_SOURCE_DIR}/swig/include/python/docs/gdal_algorithm_docs.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/docs/gdal_band_docs.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/docs/gdal_dataset_docs.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/docs/gdal_driver_docs.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/docs/gdal_mdm_docs.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/docs/gdal_operations_docs.i
+       ${PROJECT_SOURCE_DIR}/swig/include/python/docs/gdal_rat_docs.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/docs/ogr_docs.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/docs/ogr_featuredef_docs.i
        ${PROJECT_SOURCE_DIR}/swig/include/python/docs/ogr_feature_docs.i
@@ -47,6 +50,12 @@ set(GDAL_PYTHON_CSOURCES
   if( ${SWIG_VERSION} VERSION_LESS "4.1" )
       set(SWIG_PY3_DEPRECATED "-py3")
   endif()
+  if( ${SWIG_VERSION} VERSION_GREATER_EQUAL "4.4" )
+      # For compatibility with Python 3.13+ free-standing/no-gil builds
+      # Note that this -nogil option has only effects on such Python builds
+      # and is a no-op for classic gil-enabled Python builds.
+      set(SWIG_NOGIL "-nogil")
+  endif()
   gdal_swig_bindings(
     BINDING
     python
@@ -54,13 +63,10 @@ set(GDAL_PYTHON_CSOURCES
     -I${PROJECT_SOURCE_DIR}/swig/include/python/docs
     ${SWIG_PY3_DEPRECATED}
     -threads
+    ${SWIG_NOGIL}
     -relativeimport
     -outdir
-    ${CMAKE_CURRENT_BINARY_DIR}/osgeo
-    OUTPUT
-    ${GDAL_PYTHON_PYSOURCES}
-    ${GDAL_PYTHON_CSOURCES}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/modify_cpp_files.cmake)
+    ${CMAKE_CURRENT_BINARY_DIR}/osgeo)
 
   # gdal_array_wrap.cpp when NumPy exist
   if (Python_NumPy_FOUND)
@@ -70,9 +76,10 @@ set(GDAL_PYTHON_CSOURCES
       OUTPUT ${ARRAY_OUTPUT} "${CMAKE_CURRENT_BINARY_DIR}/osgeo/gdal_array.py"
       COMMAND
         ${SWIG_EXECUTABLE} -Wall -I${PROJECT_SOURCE_DIR}/swig/include -I${PROJECT_SOURCE_DIR}/swig/include/python
-        -I${PROJECT_SOURCE_DIR}/swig/include/python/docs ${SWIG_PY3_DEPRECATED} -threads -relativeimport -outdir
+        -I${PROJECT_SOURCE_DIR}/swig/include/python/docs ${SWIG_PY3_DEPRECATED} -threads ${SWIG_NOGIL} -relativeimport -outdir
         ${CMAKE_CURRENT_BINARY_DIR}/osgeo ${SWIG_DEFINES} -I${PROJECT_SOURCE_DIR}/gdal -c++ -python -o ${ARRAY_OUTPUT}
         ${ARRAY_INPUT}
+      COMMAND ${CMAKE_COMMAND} ${WERROR_DEV_FLAG} "-DFILE=${CMAKE_CURRENT_BINARY_DIR}/osgeo/gdal_array.py" -P ${PROJECT_SOURCE_DIR}/swig/python/modify_cpp_files.cmake
       DEPENDS ${ARRAY_INPUT}
               ${PROJECT_SOURCE_DIR}/swig/include/python/typemaps_python.i
               ${CMAKE_CURRENT_SOURCE_DIR}/modify_cpp_files.cmake
@@ -105,13 +112,6 @@ set(GDAL_PYTHON_CSOURCES
         DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/osgeo/gdal_fsspec.py")
       list(APPEND GDAL_PYTHON_PYSOURCES "${CMAKE_CURRENT_BINARY_DIR}/osgeo/gdal_fsspec.py")
   endif()
-
-  foreach(_file IN ITEMS ${GDAL_PYTHON_CSOURCES})
-      add_custom_command(
-        OUTPUT ${_file}
-        APPEND
-        COMMAND ${CMAKE_COMMAND} ${WERROR_DEV_FLAG} "-DFILE=${_file}" -P ${CMAKE_CURRENT_SOURCE_DIR}/modify_cpp_files.cmake)
-  endforeach()
 
 add_custom_target(python_generated_files
   DEPENDS ${GDAL_PYTHON_PYSOURCES} ${GDAL_PYTHON_CSOURCES}
@@ -147,9 +147,13 @@ if (Python_Interpreter_FOUND)
 
   # Use the 'X.Y.Z' numbering scheme from libgdal by default for the gdal python package version number
   # And append a ".patch" if the patch is not 0.
-  set(GDAL_PYTHON_VERSION "${GDAL_VERSION_NO_DEV_SUFFIX}")
-  if( NOT "${GDAL_VERSION_BUILD}" STREQUAL "0" )
-      string(APPEND GDAL_PYTHON_VERSION ".${GDAL_VERSION_BUILD}")
+  if(DEFINED ENV{GDAL_PYTHON_VERSION})
+      set(GDAL_PYTHON_VERSION "$ENV{GDAL_PYTHON_VERSION}")
+  else()
+      set(GDAL_PYTHON_VERSION "${GDAL_VERSION_NO_DEV_SUFFIX}")
+      if( NOT "${GDAL_VERSION_BUILD}" STREQUAL "0" )
+          string(APPEND GDAL_PYTHON_VERSION ".${GDAL_VERSION_BUILD}")
+      endif()
   endif()
 
   file(TO_NATIVE_PATH "${GDAL_PYTHON_CSOURCE_DIR}" GDAL_PYTHON_EXT_SOURCE_DIR)
@@ -180,6 +184,9 @@ if (Python_Interpreter_FOUND)
   endif ()
 
   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/README.rst ${CMAKE_CURRENT_BINARY_DIR}/README.rst @ONLY)
+
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/conftest.py ${CMAKE_CURRENT_BINARY_DIR}/conftest.py COPYONLY)
+  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/pytest.ini ${CMAKE_CURRENT_BINARY_DIR}/pytest.ini COPYONLY)
 
   execute_process(
     COMMAND ${Python_EXECUTABLE} -c "import setuptools; print(setuptools.__version__)"
@@ -469,7 +476,7 @@ if __name__ == '__main__':
     # This might not be the case if using a regular (non-Debian patched) Python
     # installation or setuptools (cf https://github.com/OSGeo/gdal/issues/11636)
     execute_process(
-        COMMAND env GDAL_PYTHON_BINDINGS_WITHOUT_NUMPY=yes ${Python_EXECUTABLE_CMAKE} setup.py install --help
+        COMMAND env GDAL_PYTHON_CHECK_SOURCE_FILES=no GDAL_PYTHON_BINDINGS_WITHOUT_NUMPY=yes ${Python_EXECUTABLE_CMAKE} setup.py install --help
         OUTPUT_VARIABLE SETUP_INSTALL_HELP
         OUTPUT_STRIP_TRAILING_WHITESPACE
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}

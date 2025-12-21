@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_TRANSLATE" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL_TRANSLATE" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal_translate \- Converts raster data between different formats.
 .SH SYNOPSIS
@@ -110,9 +110,8 @@ Added in version 3.2.
 .INDENT 0.0
 .TP
 .B \-of <format>
-Select the output format. Starting with GDAL 2.3, if not specified, the
-format is guessed from the extension (previously was GTiff). Use the short
-format name.
+Select the output format. If not specified, the format is guessed from the
+extension. Use the short format name.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -378,9 +377,6 @@ You may for example specify \fB\-scale 0 1 <offset> <offset+scale>\fP to
 apply a (offset, scale) tuple, for the equivalent of the 2 steps:
 \fBgdal_translate input.tif tmp.vrt \-a_scale scale \-a_offset offset\fP followed by
 \fBgdal_translate tmp.vrt output.tif \-unscale\fP
-.sp
-Added in version 2.3.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -391,9 +387,6 @@ You may for example specify \fB\-scale 0 1 <offset> <offset+scale>\fP to
 apply a (offset, scale) tuple, for the equivalent of the 2 steps:
 \fBgdal_translate input.tif tmp.vrt \-a_scale scale \-a_offset offset\fP followed by
 \fBgdal_translate tmp.vrt output.tif \-unscale\fP
-.sp
-Added in version 2.3.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -430,18 +423,12 @@ value to be changed to the value specified with this option.
 .B \-colorinterp_X <red|green|blue|alpha|gray|undefined|pan|coastal|rededge|nir|swir|mwir|lwir|...>
 Override the color interpretation of band X (where X is a valid band number,
 starting at 1)
-.sp
-Added in version 2.3.
-
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-colorinterp {red|green|blue|alpha|gray|undefined|pan|coastal|rededge|nir|swir|mwir|lwir|...},...
 Override the color interpretation of all specified bands. For
 example \-colorinterp red,green,blue,alpha for a 4 band output dataset.
-.sp
-Added in version 2.3.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -595,9 +582,6 @@ none, the target pixel is considered as nodata.
 .SH C API
 .sp
 This utility is also callable from C with \fI\%GDALTranslate()\fP\&.
-.sp
-Added in version 2.1.
-
 .SH EXAMPLES
 .SS Example 1: Creating a tiled GeoTIFF
 .INDENT 0.0

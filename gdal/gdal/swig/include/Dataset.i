@@ -271,6 +271,10 @@ public:
     }
   }
 
+  void MarkSuppressOnClose() {
+    GDALDatasetMarkSuppressOnClose(self);
+  }
+
 #ifdef SWIGJAVA
   %rename (CloseInternal) Close;
   %javamethodmodifiers Close() "private";
@@ -278,6 +282,16 @@ public:
   CPLErr Close() {
      return GDALClose(self);
   }
+
+#ifdef SWIGPYTHON
+  CPLErr _RunCloseWithoutDestroying() {
+     CPLErr eErr = GDALDatasetRunCloseWithoutDestroying(self);
+     if (eErr != CE_None && CPLGetLastErrorType() == CE_None ) {
+       CPLError(CE_Failure, CPLE_AppDefined, "Error occurred in GDALDatasetRunCloseWithoutDestroying()");
+     }
+     return eErr;
+  }
+#endif
 
   GDALDriverShadow* GetDriver() {
     return (GDALDriverShadow*) GDALGetDatasetDriver( self );
@@ -378,6 +392,45 @@ public:
   CPLErr SetGeoTransform( double argin[6] ) {
     return GDALSetGeoTransform( self, argin );
   }
+
+
+#if defined(SWIGCSHARP)
+  %feature( "kwargs" ) GetExtent;
+  CPLErr GetExtent(OGREnvelope* extent, OSRSpatialReferenceShadow* srs = NULL) {
+    return GDALGetExtent(self, extent, srs);
+  }
+#elif defined(SWIGPYTHON)
+  %feature( "kwargs" ) GetExtent;
+  void GetExtent(double argout[4], int* isvalid, OSRSpatialReferenceShadow* srs = NULL) {
+    CPLErr eErr = GDALGetExtent(self, (OGREnvelope*)argout, srs);
+    *isvalid = (eErr == CE_None);
+    return;
+  }
+#else
+  CPLErr GetExtent(double argout[4], OSRSpatialReferenceShadow* srs = NULL) {
+    return GDALGetExtent(self, (OGREnvelope*)argout, srs);
+  }
+#endif
+
+
+#if defined(SWIGCSHARP)
+  %feature( "kwargs" ) GetExtentWGS84LongLat;
+  CPLErr GetExtentWGS84LongLat(OGREnvelope* extent) {
+    return GDALGetExtentWGS84LongLat(self, extent);
+  }
+#elif defined(SWIGPYTHON)
+  %feature( "kwargs" ) GetExtentWGS84LongLat;
+  void GetExtentWGS84LongLat(double argout[4], int* isvalid) {
+    CPLErr eErr = GDALGetExtentWGS84LongLat(self, (OGREnvelope*)argout);
+    *isvalid = (eErr == CE_None);
+    return;
+  }
+#else
+  CPLErr GetExtentWGS84LongLat(double argout[4]) {
+    return GDALGetExtentWGS84LongLat(self, (OGREnvelope*)argout);
+  }
+#endif
+
 
   // The (int,int*) arguments are typemapped.  The name of the first argument
   // becomes the kwarg name for it.
@@ -513,7 +566,7 @@ public:
     GIntBig band_space = (buf_band_space == 0) ? 0 : *buf_band_space;
 
     GIntBig min_buffer_size =
-      ComputeDatasetRasterIOSize (nxsize, nysize, GDALGetDataTypeSize( ntype ) / 8,
+      ComputeDatasetRasterIOSize (nxsize, nysize, GDALGetDataTypeSizeBytes( ntype ),
                                   band_list ? band_list : GDALGetRasterCount(self), pband_list, band_list,
                                   pixel_space, line_space, band_space, FALSE);
     if (min_buffer_size == 0)
@@ -541,7 +594,11 @@ public:
 #endif
 
 %apply (int *optional_int) { (GDALDataType *buf_type) };
+#if defined(SWIGCSHARP)
+%apply int PINNED[] {int *pband_list};
+#else
 %apply (int nList, int *pList ) { (int band_list, int *pband_list ) };
+#endif
 CPLErr AdviseRead(  int xoff, int yoff, int xsize, int ysize,
                     int *buf_xsize = 0, int *buf_ysize = 0,
                     GDALDataType *buf_type = 0,
@@ -564,7 +621,11 @@ CPLErr AdviseRead(  int xoff, int yoff, int xsize, int ysize,
                                  band_list, pband_list, options);
 }
 %clear (GDALDataType *buf_type);
+#if defined(SWIGCSHARP)
+%clear int *pband_list;
+#else
 %clear (int band_list, int *pband_list );
+#endif
 
 /* NEEDED */
 /* GetSubDatasets */
@@ -701,7 +762,7 @@ CPLErr AdviseRead(  int xoff, int yoff, int xsize, int ysize,
         }
         else
         {
-            nBandSpace = GDALGetDataTypeSize(eBufType) / 8;
+            nBandSpace = GDALGetDataTypeSizeBytes(eBufType);
             nPixelSpace = nBandSpace * band_list;
         }
         CPLVirtualMem* vmem = GDALDatasetGetVirtualMem( self,
@@ -1041,6 +1102,14 @@ OGRErr AbortSQL() {
       return GDALDatasetUpdateRelationship(self, (GDALRelationshipH)relationship, NULL);
   }
   %clear GDALRelationshipShadow* relationship;
+
+%newobject AsMDArray;
+%apply (char **CSL) {char **};
+  GDALMDArrayHS *AsMDArray(char** options = NULL)
+  {
+    return GDALDatasetAsMDArray(self, options);
+  }
+%clear char **;
 
 } /* extend */
 }; /* GDALDatasetShadow */

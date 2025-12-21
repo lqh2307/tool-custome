@@ -16,6 +16,7 @@
 #include "hdf5_api.h"
 
 #include "cpl_json.h"
+#include "gdal_priv.h"
 #include "ogr_spatialref.h"
 
 #include <map>
@@ -52,8 +53,8 @@ class HDF5EOSParser
     struct GridMetadata
     {
         std::string osGridName{};
-        std::vector<Dimension> aoDimensions;  // all dimensions of the grid
-        std::string osProjection{};           // e.g HE5_GCTP_SNSOID
+        std::vector<Dimension> aoDimensions{};  // all dimensions of the grid
+        std::string osProjection{};             // e.g HE5_GCTP_SNSOID
         int nProjCode = -1;          // GTCP numeric value for osProjection
         std::string osGridOrigin{};  // e.g HE5_HDFE_GD_UL
         std::vector<double>
@@ -65,7 +66,7 @@ class HDF5EOSParser
         std::vector<double>
             adfLowerRightPointMeters{};  // e.g (0.000000,4447802.078667)
 
-        bool GetGeoTransform(double adfGeoTransform[6]) const;
+        bool GetGeoTransform(GDALGeoTransform &gt) const;
         std::unique_ptr<OGRSpatialReference> GetSRS() const;
     };
 
@@ -81,24 +82,18 @@ class HDF5EOSParser
         std::vector<Dimension> aoDimensions{};  // all dimensions of the swath
     };
 
-    struct SwathGeolocationFieldMetadata
+    struct SwathFieldMetadata
     {
         std::vector<Dimension>
-            aoDimensions{};  // dimensions of the geolocation field
-        const SwathMetadata *poSwathMetadata = nullptr;
-    };
-
-    struct SwathDataFieldMetadata
-    {
-        std::vector<Dimension> aoDimensions{};  // dimensions of the data field
+            aoDimensions{};  // dimensions of the geolocation/data field
         const SwathMetadata *poSwathMetadata = nullptr;
 
         int iXDim = -1;
         int iYDim = -1;
         int iOtherDim = -1;
 
-        std::string osLongitudeSubdataset;
-        std::string osLatitudeSubdataset;
+        std::string osLongitudeSubdataset{};
+        std::string osLatitudeSubdataset{};
         int nLineOffset = 0;
         int nLineStep = 0;
         int nPixelOffset = 0;
@@ -120,12 +115,8 @@ class HDF5EOSParser
         GridDataFieldMetadata &gridDataFieldMetadataOut) const;
     bool GetSwathMetadata(const std::string &osSwathName,
                           SwathMetadata &swathMetadataOut) const;
-    bool GetSwathDataFieldMetadata(
-        const char *pszSubdatasetName,
-        SwathDataFieldMetadata &swathDataFieldMetadataOut) const;
-    bool GetSwathGeolocationFieldMetadata(
-        const char *pszSubdatasetName,
-        SwathGeolocationFieldMetadata &swathGeolocationFieldMetadataOut) const;
+    bool GetSwathFieldMetadata(const char *pszSubdatasetName,
+                               SwathFieldMetadata &swathFieldMetadataOut) const;
 
   private:
     DataModel m_eDataModel = DataModel::INVALID;
@@ -135,10 +126,8 @@ class HDF5EOSParser
         m_oMapSubdatasetNameToGridDataFieldMetadata{};
     std::map<std::string, std::unique_ptr<SwathMetadata>>
         m_oMapSwathNameToSwathMetadata{};
-    std::map<std::string, SwathDataFieldMetadata>
-        m_oMapSubdatasetNameToSwathDataFieldMetadata{};
-    std::map<std::string, SwathGeolocationFieldMetadata>
-        m_oMapSubdatasetNameToSwathGeolocationFieldMetadata{};
+    std::map<std::string, SwathFieldMetadata>
+        m_oMapSubdatasetNameToSwathFieldMetadata{};
 
     void ParseGridStructure(const CPLJSONObject &oGridStructure);
     void ParseSwathStructure(const CPLJSONObject &oSwathStructure);

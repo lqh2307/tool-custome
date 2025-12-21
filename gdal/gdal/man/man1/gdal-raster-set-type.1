@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-RASTER-SET-TYPE" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-RASTER-SET-TYPE" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-raster-set-type \- Modify the data type of bands of a raster dataset
 .sp
@@ -43,19 +43,22 @@ Usage: gdal raster set\-type [OPTIONS] <INPUT> <OUTPUT>
 Modify the data type of bands of a raster dataset.
 
 Positional arguments:
-  \-i, \-\-input <INPUT>                                      Input raster dataset [required]
+  \-i, \-\-input <INPUT>                                      Input raster datasets [required]
   \-o, \-\-output <OUTPUT>                                    Output raster dataset [required]
 
 Common Options:
   \-h, \-\-help                                               Display help message and exit
   \-\-json\-usage                                             Display usage as JSON document and exit
   \-\-config <KEY>=<VALUE>                                   Configuration option [may be repeated]
-  \-\-progress                                               Display progress bar
+  \-q, \-\-quiet                                              Quiet mode (no progress bar)
 
 Options:
   \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>      Output format (\(dqGDALG\(dq allowed)
   \-\-co, \-\-creation\-option <KEY>=<VALUE>                    Creation option [may be repeated]
   \-\-overwrite                                              Whether overwriting existing output is allowed
+                                                           Mutually exclusive with \-\-append
+  \-\-append                                                 Append as a subdataset to existing output
+                                                           Mutually exclusive with \-\-overwrite
   \-\-ot, \-\-datatype, \-\-output\-data\-type <OUTPUT\-DATA\-TYPE>  Output data type. OUTPUT\-DATA\-TYPE=Byte|Int8|UInt16|Int16|UInt32|Int32|UInt64|Int64|CInt16|CInt32|Float16|Float32|Float64|CFloat32|CFloat64 [required]
 
 Advanced Options:
@@ -80,7 +83,7 @@ Which output raster format to use. Allowed values may be given by
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-co <NAME>=<VALUE>
+.B \-\-co, \-\-creation\-option <NAME>=<VALUE>
 Many formats have one or more optional creation options that can be
 used to control particulars about the file created. For instance,
 the GeoTIFF driver supports creation options to control compression,

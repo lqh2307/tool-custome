@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALDEM" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDALDEM" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdaldem \- Tools to analyze and visualize DEMs.
 .SH SYNOPSIS
@@ -236,10 +236,12 @@ The output raster produced
 .TP
 .B \-of <format>
 Select the output format.
-.sp
-Added in version 2.3.0: If not specified, the format is guessed from the extension
+.INDENT 7.0
+.INDENT 3.5
+If not specified, the format is guessed from the extension
 (previously was \fI\%GTiff \-\- GeoTIFF File Format\fP). Use the short format name.
-
+.UNINDENT
+.UNINDENT
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -377,9 +379,6 @@ combined shading, a combination of slope and oblique shading.
 .TP
 .B \-multidirectional
 multidirectional shading, a combination of hillshading illuminated from 225 deg, 270 deg, 315 deg, and 360 deg azimuth.
-.sp
-Added in version 2.2.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -625,9 +624,6 @@ There are no specific options.
 .SH C API
 .sp
 This utility is also callable from C with \fI\%GDALDEMProcessing()\fP\&.
-.sp
-Added in version 2.1.
-
 .SH AUTHORS
 .sp
 Matthew Perry \X'tty: link mailto:perrygeo@gmail.com'\fI\%perrygeo@gmail.com\fP\X'tty: link', Even Rouault \X'tty: link mailto:even.rouault@spatialys.com'\fI\%even.rouault@spatialys.com\fP\X'tty: link',

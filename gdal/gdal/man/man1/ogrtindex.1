@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "OGRTINDEX" "1" "Sep 04, 2025" "" "GDAL"
+.TH "OGRTINDEX" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 ogrtindex \- Creates a tileindex.
 .SH SYNOPSIS
@@ -102,27 +102,18 @@ coordinate reference system. Using this option generates files that
 are not compatible with MapServer < 7.2. Default creates simple
 rectangular polygons in the same coordinate reference system as the
 input vector layers.
-.sp
-Added in version 2.2.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-src_srs_name <field_name>
 The name of the field to store the SRS of each tile. This field name
 can be used as the value of the TILESRS keyword in MapServer >= 7.2.
-.sp
-Added in version 2.2.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-src_srs_format {AUTO|WKT|EPSG|PROJ}
 The format in which the SRS of each tile must be written.
 Available formats are: \fBAUTO\fP, \fBWKT\fP, \fBEPSG\fP, \fBPROJ\fP\&.
-.sp
-Added in version 2.2.0.
-
 .UNINDENT
 .INDENT 0.0
 .TP

@@ -189,13 +189,9 @@ typedef enum
                                                         OFSTInt16 = 2,
     /** Single precision (32 bit) floating point. Only valid for OFTReal and OFTRealList. */
                                                         OFSTFloat32 = 3,
-    /** JSON content. Only valid for OFTString.
-     * @since GDAL 2.4
-     */
+    /** JSON content. Only valid for OFTString. */
                                                         OFSTJSON = 4,
-    /** UUID string representation. Only valid for OFTString.
-     * @since GDAL 3.3
-     */
+    /** UUID string representation. Only valid for OFTString. */
                                                         OFSTUUID = 5,
 } OGRFieldSubType;
 
@@ -306,7 +302,6 @@ typedef void retGetPoints;
 #ifdef SWIGJAVA
 %javaconst(1);
 #endif
-/* Interface constant added for GDAL 1.7.0 */
 %constant wkb25DBit = 0x80000000;
 
 /* typo : deprecated */
@@ -528,6 +523,7 @@ typedef void retGetPoints;
 
 #else
 typedef int OGRErr;
+typedef int CPLErr;
 
 #define wkb25DBit 0x80000000
 #define ogrZMarker 0x21125711
@@ -634,6 +630,27 @@ typedef int CPLErr;
 %import Dataset_import.i
 #endif /* defined(SWIGPYTHON) */
 #endif /* FROM_GDAL_I */
+
+
+
+%inline %{
+/************************************************************************/
+/*                          OGRGetFieldTypeByName                       */
+/************************************************************************/
+OGRFieldType GetFieldTypeByName(const char* typeName )
+{
+    return OGR_GetFieldTypeByName(typeName);
+}
+
+/************************************************************************/
+/*                        OGRGetFieldSubTypeByName                      */
+/************************************************************************/
+OGRFieldSubType GetFieldSubtypeByName (const char* subTypeName )
+{
+    return OGR_GetFieldSubTypeByName(subTypeName);
+}
+%}
+
 
 /************************************************************************/
 /*                               OGRGetGEOSVersion                      */
@@ -848,12 +865,10 @@ public:
     return OGR_Dr_GetName( self );
   }
 
-  /* Added in GDAL 1.8.0 */
   void Register() {
     OGRRegisterDriver( self );
   }
 
-  /* Added in GDAL 1.8.0 */
   void Deregister() {
     OGRDeregisterDriver( self );
   }
@@ -1325,7 +1340,6 @@ public:
   }
 #endif
 
-  /* Added in OGR 1.8.0 */
   OGRwkbGeometryType GetGeomType() {
     return (OGRwkbGeometryType) OGR_L_GetGeomType(self);
   }
@@ -1377,8 +1391,13 @@ public:
     return OGR_L_UpsertFeature(self, feature);
   }
 
+#if defined(SWIGCSHARP)
+%apply int PINNED[] {int *panUpdatedFieldsIdx};
+%apply int PINNED[] {int *panUpdatedGeomFieldsIdx};
+#else
 %apply (int nList, int *pList ) { (int nUpdatedFieldsCount, int *panUpdatedFieldsIdx ) };
 %apply (int nList, int *pList ) { (int nUpdatedGeomFieldsCount, int *panUpdatedGeomFieldsIdx ) };
+#endif
   OGRErr UpdateFeature(OGRFeatureShadow *feature,
                        int nUpdatedFieldsCount,
                        const int *panUpdatedFieldsIdx,
@@ -1392,8 +1411,13 @@ public:
                                panUpdatedGeomFieldsIdx,
                                bUpdateStyleString);
   }
+#if defined(SWIGCSHARP)
+%clear int *panUpdatedFieldsIdx;
+%clear int *panUpdatedGeomFieldsIdx;
+#else
 %clear (int nUpdatedFieldsCount, int *panUpdatedFieldsIdx );
 %clear (int nUpdatedGeomFieldsCount, int *panUpdatedGeomFieldsIdx );
+#endif
 %clear OGRFeatureShadow *feature;
 
   OGRErr DeleteFeature(GIntBig fid) {
@@ -1872,8 +1896,12 @@ public:
       return (OGRFeatureShadow*) OGR_F_Create( feature_def );
   }
 
+  %newobject GetDefnRef;
   OGRFeatureDefnShadow *GetDefnRef() {
-    return (OGRFeatureDefnShadow*) OGR_F_GetDefnRef(self);
+    auto defn = (OGRFeatureDefnShadow*) OGR_F_GetDefnRef(self);
+    if (defn)
+       OGR_FD_Reference(defn);
+    return defn;
   }
 
   OGRErr SetGeometry(OGRGeometryShadow* geom) {
@@ -2841,6 +2869,9 @@ public:
 #ifndef SWIGJAVA
   %feature("kwargs") OGRFieldDefnShadow;
 #endif
+#ifdef SWIGCSHARP
+  %apply ( const char *utf8_path ) { (const char* name_null_ok) };
+#endif
   OGRFieldDefnShadow( const char* name_null_ok="unnamed",
                       OGRFieldType field_type=OFTString) {
     if (ValidateOGRFieldType(field_type))
@@ -2848,10 +2879,19 @@ public:
     else
         return NULL;
   }
+#ifdef SWIGCSHARP
+  %clear (const char* name_null_ok );
+#endif
 
+#ifdef SWIGCSHARP
+  %apply ( const char *utf8_path ) { const char * GetName };
+#endif
   const char * GetName() {
     return OGR_Fld_GetNameRef(self);
   }
+#ifdef SWIGCSHARP
+  %clear (const char * GetName );
+#endif
 
 #ifdef SWIGJAVA
   StringAsByteArray* GetNameAsByteArray() {
@@ -2863,9 +2903,17 @@ public:
     return OGR_Fld_GetNameRef(self);
   }
 
+#ifdef SWIGCSHARP
+  %apply ( const char *utf8_path ) { (const char* name) };
+#endif
+
   void SetName( const char* name) {
     OGR_Fld_SetName(self, name);
   }
+
+#ifdef SWIGCSHARP
+  %clear (const char* name );
+#endif
 
   const char * GetAlternativeName() {
     return OGR_Fld_GetAlternativeNameRef(self);
@@ -2942,7 +2990,6 @@ public:
     OGR_Fld_SetTZFlag(self, tzflag);
   }
 
-  /* Interface method added for GDAL 1.7.0 */
   const char * GetTypeName()
   {
       return OGR_GetFieldTypeName(OGR_Fld_GetType(self));
@@ -3231,6 +3278,20 @@ OGRGeometryShadow* CreateGeometryFromWkb(int nLen, unsigned char *pBuf,
   }
 
 %}
+
+#ifndef SWIGCSHARP
+%newobject CreateGeometryFromEnvelope;
+%inline %{
+  OGRGeometryShadow *CreateGeometryFromEnvelope(double xmin,
+                                                double ymin,
+                                                double xmax,
+                                                double ymax,
+                                                OSRSpatialReferenceShadow *reference = nullptr) {
+    OGRGeometryShadow* geom = (OGRGeometryShadow*) OGR_G_CreateFromEnvelope(xmin, ymin, xmax, ymax, reference);
+    return geom;
+  }
+%}
+#endif
 
 %newobject BuildPolygonFromEdges;
 #ifndef SWIGJAVA
@@ -3590,7 +3651,6 @@ public:
     return OGR_G_GetPointCount(self);
   }
 
-  /* since GDAL 1.9.0 */
 #if defined(SWIGPYTHON) || defined(SWIGJAVA)
 #ifdef SWIGJAVA
   retGetPoints* GetPoints(int* pnCount, double** ppadfXY, double** ppadfZ, int nCoordDimension = 0)
@@ -3639,10 +3699,22 @@ public:
     if (nCoordDimension <= 0)
         nCoordDimension = OGR_G_GetCoordinateDimension(self);
     *ppadfZ = (nCoordDimension == 3) ? (double*)VSIMalloc(sizeof(double) * nPoints) : NULL;
-    OGR_G_GetPoints(self,
-                    *ppadfXY, 2 * sizeof(double),
-                    (*ppadfXY) + 1, 2 * sizeof(double),
-                    *ppadfZ, sizeof(double));
+    int ret = OGR_G_GetPoints(self,
+                              *ppadfXY, 2 * sizeof(double),
+                              (*ppadfXY) + 1, 2 * sizeof(double),
+                              *ppadfZ, sizeof(double));
+    if (ret == -1)
+    {
+        CPLFree(*ppadfXY);
+        *ppadfXY = nullptr;
+        if (*ppadfZ) {
+            CPLFree(*ppadfZ);
+            *ppadfZ = nullptr;
+        }
+
+        *pnCount = 0;
+        return;
+    }
   }
 #endif
 #endif
@@ -3759,6 +3831,12 @@ public:
 #endif
   OGRGeometryShadow* DelaunayTriangulation(double dfTolerance = 0.0, int bOnlyEdges = FALSE) {
     return (OGRGeometryShadow*) OGR_G_DelaunayTriangulation(self, dfTolerance, bOnlyEdges);
+  }
+
+  /* OGR >= 3.12 */
+  %newobject ConstrainedDelaunayTriangulation;
+  OGRGeometryShadow* ConstrainedDelaunayTriangulation() {
+    return (OGRGeometryShadow*) OGR_G_ConstrainedDelaunayTriangulation(self);
   }
 
   %newobject Polygonize;
@@ -4750,7 +4828,6 @@ OGRDriverShadow* GetDriver(int driver_number) {
 %apply (char **options) {char **};
 #endif
 
-/* Interface method added for GDAL 1.7.0 */
 #ifdef SWIGJAVA
 %inline %{
   static

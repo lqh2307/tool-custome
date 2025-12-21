@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "OGR2OGR" "1" "Sep 04, 2025" "" "GDAL"
+.TH "OGR2OGR" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 ogr2ogr \- Converts simple features data between file formats.
 .SH SYNOPSIS
@@ -116,8 +116,7 @@ Added in version 3.2.
 .TP
 .B \-of <format_name>, \-f <format_name>
 Output file format name, e.g. \fBESRI Shapefile\fP, \fBMapInfo File\fP,
-\fBPostgreSQL\fP\&.  Starting with GDAL 2.3, if not specified, the format is
-guessed from the extension (previously was ESRI Shapefile).
+\fBPostgreSQL\fP\&. If not specified, the format is guessed from the extension.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -136,7 +135,9 @@ operation is used to insert or update features instead of appending with
 \fI\%OGRLayer::CreateFeature()\fP\&.
 .sp
 This is currently implemented only in a few drivers:
-\fI\%GPKG \-\- GeoPackage vector\fP and \fI\%MongoDBv3\fP\&.
+\fI\%GPKG \-\- GeoPackage vector\fP, \fI\%Elasticsearch: Geographically Encoded Objects for Elasticsearch\fP and \fI\%MongoDBv3\fP
+(drivers that implement upsert expose the \fI\%GDAL_DCAP_UPSERT\fP
+capability).
 .sp
 The upsert operation uses the FID of the input feature, when it is set
 and is a \(dqsignificant\(dq (that is the FID column name is not the empty string),
@@ -202,7 +203,7 @@ feature count\(dq capability.
 .TP
 .B \-sql <sql_statement>|@<filename>
 SQL statement to execute. The resulting table/layer will be saved to the
-output. Starting with GDAL 2.1, the \fB@filename\fP syntax can be used to
+output. The \fB@filename\fP syntax can be used to
 indicate that the content is in the pointed filename. (Cannot be used with \fI\%\-spat_srs\fP\&.)
 .UNINDENT
 .INDENT 0.0
@@ -216,13 +217,15 @@ and \fBINDIRECT_SQLITE\fP dialect values, and this can be used with any datasour
 .INDENT 0.0
 .TP
 .B \-where <restricted_where>|@<filename>
-Attribute query (like SQL WHERE). Starting with GDAL 2.1, the \fB@filename\fP
+Attribute query (like SQL WHERE). The \fB@filename\fP
 syntax can be used to indicate that the content is in the pointed filename.
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-skipfailures
-Continue after a failure, skipping the failed feature.
+Continue after a failure, skipping the failed feature. Note that this option
+overrides the value of \fI\%\-gt\fP to 1, which may
+cause severe slowdown when inserting into databases.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -293,7 +296,7 @@ Force the coordinate dimension to val (valid values are \fBXY\fP, \fBXYZ\fP,
 \fBXY\fP and \fB3\fP is an alias for \fBXYZ\fP). This affects both the layer
 geometry type, and feature geometries. The value can be set to \fBlayer_dim\fP
 to instruct feature geometries to be promoted to the coordinate dimension
-declared by the layer. Support for M was added in GDAL 2.1.
+declared by the layer.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -635,6 +638,9 @@ This option is applied before the reprojection implied by \fI\%\-t_srs\fP
 Run the \fI\%OGRGeometry::MakeValid()\fP operation, followed by
 \fI\%OGRGeometryFactory::removeLowerDimensionSubGeoms()\fP, on geometries
 to ensure they are valid regarding the rules of the Simple Features specification.
+.sp
+Added in version 3.1: (requires GEOS)
+
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -643,6 +649,9 @@ Run the \fI\%OGRGeometry::IsValid()\fP operation on geometries to check if
 they are valid regarding the rules of the Simple Features specification.
 If they are not, the feature is skipped. This check is done after all other
 geometry operations.
+.sp
+Added in version 3.10: (requires GEOS)
+
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -682,6 +691,9 @@ for a limited set of formats).
 .INDENT 0.0
 .TP
 .B \-dateTimeTo {UTC|UTC(+|\-)<HH>|UTC(+|\-)<HH>:<MM>}
+Added in version 3.7.
+
+.sp
 Converts date time values from the timezone specified in the source value
 to the target timezone expressed with \fI\%\-dateTimeTo\fP\&.
 Datetime whose timezone is unknown or localtime are not modified.
@@ -785,7 +797,7 @@ source layer.
 .TP
 .B \-unsetFid
 Can be specified to prevent the name of the source FID column and source
-feature IDs from being re\-used for the target layer. This option can for
+feature IDs from being reused for the target layer. This option can for
 example be useful if selecting source features with a ORDER BY clause.
 .UNINDENT
 .INDENT 0.0
@@ -824,9 +836,6 @@ supported by output driver.
 To disable copying of native data, i.e. details of source format not
 captured by OGR abstraction, that are otherwise preserved by some drivers
 (like GeoJSON) when converting to same format.
-.sp
-Added in version 2.1.
-
 .UNINDENT
 .INDENT 0.0
 .TP

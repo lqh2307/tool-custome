@@ -16,7 +16,7 @@
 #include "cpl_compressor.h"
 #include "cpl_json.h"
 #include "gdal_priv.h"
-#include "gdal_pam.h"
+#include "gdal_pam_multidim.h"
 #include "memmultidim.h"
 
 #include <array>
@@ -35,6 +35,8 @@ const CPLCompressor *ZarrGetQuantizeDecompressor();
 const CPLCompressor *ZarrGetTIFFDecompressor();
 const CPLCompressor *ZarrGetFixedScaleOffsetDecompressor();
 
+class ZarrGroupBase;
+
 /************************************************************************/
 /*                            ZarrDataset                               */
 /************************************************************************/
@@ -43,9 +45,9 @@ class ZarrDataset final : public GDALDataset
 {
     friend class ZarrRasterBand;
 
-    std::shared_ptr<GDALGroup> m_poRootGroup{};
+    std::shared_ptr<ZarrGroupBase> m_poRootGroup{};
     CPLStringList m_aosSubdatasets{};
-    std::array<double, 6> m_adfGeoTransform{{0.0, 1.0, 0.0, 0.0, 0.0, 1.0}};
+    GDALGeoTransform m_gt{};
     bool m_bHasGT = false;
     std::shared_ptr<GDALDimension> m_poDimX{};
     std::shared_ptr<GDALDimension> m_poDimY{};
@@ -55,7 +57,7 @@ class ZarrDataset final : public GDALDataset
                                      CSLConstList papszOpenOptions);
 
   public:
-    explicit ZarrDataset(const std::shared_ptr<GDALGroup> &poRootGroup);
+    explicit ZarrDataset(const std::shared_ptr<ZarrGroupBase> &poRootGroup);
     ~ZarrDataset() override;
 
     CPLErr FlushCache(bool bAtClosing = false) override;
@@ -84,13 +86,10 @@ class ZarrDataset final : public GDALDataset
     const OGRSpatialReference *GetSpatialRef() const override;
     CPLErr SetSpatialRef(const OGRSpatialReference *poSRS) override;
 
-    CPLErr GetGeoTransform(double *padfTransform) override;
-    CPLErr SetGeoTransform(double *padfTransform) override;
+    CPLErr GetGeoTransform(GDALGeoTransform &gt) const override;
+    CPLErr SetGeoTransform(const GDALGeoTransform &gt) override;
 
-    std::shared_ptr<GDALGroup> GetRootGroup() const override
-    {
-        return m_poRootGroup;
-    }
+    std::shared_ptr<GDALGroup> GetRootGroup() const override;
 };
 
 /************************************************************************/
@@ -146,6 +145,8 @@ class ZarrAttributeGroup
   public:
     explicit ZarrAttributeGroup(const std::string &osParentName,
                                 bool bContainerIsGroup);
+
+    bool Close();
 
     void Init(const CPLJSONObject &obj, bool bUpdatable);
 
@@ -232,8 +233,6 @@ class ZarrAttributeGroup
 /************************************************************************/
 /*                         ZarrSharedResource                           */
 /************************************************************************/
-
-class ZarrGroupBase;
 
 class ZarrSharedResource
     : public std::enable_shared_from_this<ZarrSharedResource>
@@ -367,7 +366,9 @@ class ZarrGroupBase CPL_NON_FINAL : public GDALGroup
     mutable std::map<CPLString, std::shared_ptr<ZarrDimension>>
         m_oMapDimensions{};
     mutable bool m_bDirectoryExplored = false;
+    mutable std::set<std::string> m_oSetGroupNames{};
     mutable std::vector<std::string> m_aosGroups{};
+    mutable std::set<std::string> m_oSetArrayNames{};
     mutable std::vector<std::string> m_aosArrays{};
     mutable ZarrAttributeGroup m_oAttrGroup;
     mutable bool m_bAttributesLoaded = false;
@@ -397,6 +398,8 @@ class ZarrGroupBase CPL_NON_FINAL : public GDALGroup
 
   public:
     ~ZarrGroupBase() override;
+
+    virtual bool Close();
 
     std::shared_ptr<GDALAttribute>
     GetAttribute(const std::string &osName) const override
@@ -516,6 +519,8 @@ class ZarrV2Group final : public ZarrGroupBase
     {
     }
 
+    bool Close() override;
+
   public:
     static std::shared_ptr<ZarrV2Group>
     Create(const std::shared_ptr<ZarrSharedResource> &poSharedResource,
@@ -568,6 +573,8 @@ class ZarrV3Group final : public ZarrGroupBase
     ZarrV3Group(const std::shared_ptr<ZarrSharedResource> &poSharedResource,
                 const std::string &osParentName, const std::string &osName,
                 const std::string &osDirectoryName);
+
+    bool Close() override;
 
   public:
     ~ZarrV3Group() override;
@@ -873,6 +880,11 @@ class ZarrArray CPL_NON_FINAL : public GDALPamMDArray
                        double dfMean, double dfStdDev, GUInt64 nValidCount,
                        CSLConstList papszOptions) override;
 
+    bool IsTileMissingFromCacheInfo(const std::string &osFilename,
+                                    const uint64_t *tileIndices) const;
+
+    virtual CPLStringList GetRawBlockInfoInfo() const = 0;
+
   public:
     ~ZarrArray() override;
 
@@ -1042,12 +1054,15 @@ class ZarrArray CPL_NON_FINAL : public GDALPamMDArray
 
     void ParentRenamed(const std::string &osNewParentFullName) override;
 
-    virtual void Flush() = 0;
+    virtual bool Flush() = 0;
 
     std::shared_ptr<GDALGroup> GetRootGroup() const override
     {
         return m_poSharedResource->GetRootGroup();
     }
+
+    bool GetRawBlockInfo(const uint64_t *panBlockCoordinates,
+                         GDALMDArrayRawBlockInfo &info) const override;
 
     bool CacheTilePresence();
 
@@ -1086,7 +1101,7 @@ class ZarrV2Array final : public ZarrArray
                 const std::vector<DtypeElt> &aoDtypeElts,
                 const std::vector<GUInt64> &anBlockSize, bool bFortranOrder);
 
-    void Serialize();
+    bool Serialize();
 
     bool LoadTileData(const uint64_t *tileIndices, bool bUseMutex,
                       const CPLCompressor *psDecompressor,
@@ -1130,7 +1145,7 @@ class ZarrV2Array final : public ZarrArray
 
     void SetFilters(const CPLJSONArray &oFiltersArray);
 
-    void Flush() override;
+    bool Flush() override;
 
   protected:
     std::string GetDataDirectory() const override;
@@ -1149,6 +1164,8 @@ class ZarrV2Array final : public ZarrArray
 
     bool IAdviseRead(const GUInt64 *arrayStartIdx, const size_t *count,
                      CSLConstList papszOptions) const override;
+
+    CPLStringList GetRawBlockInfoInfo() const override;
 };
 
 /************************************************************************/
@@ -1183,7 +1200,7 @@ class ZarrV3Codec CPL_NON_FINAL
     ZarrV3Codec(const std::string &osName);
 
   public:
-    virtual ~ZarrV3Codec() = 0;
+    virtual ~ZarrV3Codec();
 
     enum class IOType
     {
@@ -1356,6 +1373,11 @@ class ZarrV3CodecBytes final : public ZarrV3Codec
                           const ZarrArrayMetadata &oInputArrayMetadata,
                           ZarrArrayMetadata &oOutputArrayMetadata) override;
 
+    bool IsLittle() const
+    {
+        return m_bLittle;
+    }
+
 #if CPL_IS_LSB
     bool IsNoOp() const override
     {
@@ -1412,12 +1434,16 @@ class ZarrV3CodecTranspose final : public ZarrV3Codec
     }
 
     static CPLJSONObject GetConfiguration(const std::vector<int> &anOrder);
-    static CPLJSONObject GetConfiguration(const std::string &osOrder);
 
     bool
     InitFromConfiguration(const CPLJSONObject &configuration,
                           const ZarrArrayMetadata &oInputArrayMetadata,
                           ZarrArrayMetadata &oOutputArrayMetadata) override;
+
+    const std::vector<int> &GetOrder() const
+    {
+        return m_anOrder;
+    }
 
     bool IsNoOp() const override;
 
@@ -1458,6 +1484,11 @@ class ZarrV3CodecSequence
         return m_oCodecArray;
     }
 
+    const std::vector<std::unique_ptr<ZarrV3Codec>> &GetCodecs() const
+    {
+        return m_apoCodecs;
+    }
+
     bool Encode(ZarrByteVectorQuickResize &abyBuffer);
     bool Decode(ZarrByteVectorQuickResize &abyBuffer);
 };
@@ -1470,6 +1501,7 @@ class ZarrV3Array final : public ZarrArray
 {
     bool m_bV2ChunkKeyEncoding = false;
     std::unique_ptr<ZarrV3CodecSequence> m_poCodecs{};
+    CPLJSONArray m_oJSONCodecs{};
 
     ZarrV3Array(const std::shared_ptr<ZarrSharedResource> &poSharedResource,
                 const std::string &osParentName, const std::string &osName,
@@ -1478,7 +1510,7 @@ class ZarrV3Array final : public ZarrArray
                 const std::vector<DtypeElt> &aoDtypeElts,
                 const std::vector<GUInt64> &anBlockSize);
 
-    void Serialize(const CPLJSONObject &oAttrs);
+    bool Serialize(const CPLJSONObject &oAttrs);
 
     bool NeedDecodedBuffer() const;
 
@@ -1508,12 +1540,14 @@ class ZarrV3Array final : public ZarrArray
         m_bV2ChunkKeyEncoding = b;
     }
 
-    void SetCodecs(std::unique_ptr<ZarrV3CodecSequence> &&poCodecs)
+    void SetCodecs(const CPLJSONArray &oJSONCodecs,
+                   std::unique_ptr<ZarrV3CodecSequence> &&poCodecs)
     {
+        m_oJSONCodecs = oJSONCodecs;
         m_poCodecs = std::move(poCodecs);
     }
 
-    void Flush() override;
+    bool Flush() override;
 
   protected:
     std::string GetDataDirectory() const override;
@@ -1532,6 +1566,8 @@ class ZarrV3Array final : public ZarrArray
 
     bool IAdviseRead(const GUInt64 *arrayStartIdx, const size_t *count,
                      CSLConstList papszOptions) const override;
+
+    CPLStringList GetRawBlockInfoInfo() const override;
 };
 
 #endif  // ZARR_H

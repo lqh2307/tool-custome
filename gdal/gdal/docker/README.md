@@ -10,13 +10,9 @@ best of our knowledge and not guaranteed. Users should check by themselves.
 # Alpine based
 
 Alpine version:
+* 3.22 for GDAL 3.12
 * 3.21 for GDAL 3.11
 * 3.20 for GDAL 3.10
-* 3.19 for GDAL 3.9
-* 3.18 for GDAL 3.8
-* 3.17 for GDAL 3.7
-* 3.16 for GDAL 3.6
-* 3.15 for GDAL 3.5
 
 ## Small: `ghcr.io/osgeo/gdal:alpine-small-latest`
 
@@ -105,11 +101,11 @@ If you are getting a ``<jemalloc>: arena 0 background thread creation failed (1)
 
 # Images of releases
 
-Tagged images of recent past releases are available. The last ones (at time of writing) are for GDAL 3.10.1 and PROJ 9.5.1, for linux/amd64 and linux/arm64:
-* ghcr.io/osgeo/gdal:alpine-small-3.10.1
-* ghcr.io/osgeo/gdal:alpine-normal-3.10.1
-* ghcr.io/osgeo/gdal:ubuntu-small-3.10.1
-* ghcr.io/osgeo/gdal:ubuntu-full-3.10.1
+Tagged images of recent past releases are available. The last ones (at time of writing) are for GDAL 3.11.4 and PROJ 9.6.2, for linux/amd64 and linux/arm64:
+* ghcr.io/osgeo/gdal:alpine-small-3.11.4
+* ghcr.io/osgeo/gdal:alpine-normal-3.11.4
+* ghcr.io/osgeo/gdal:ubuntu-small-3.11.4
+* ghcr.io/osgeo/gdal:ubuntu-full-3.11.4
 
 ## Multi-arch Images
 
@@ -121,6 +117,8 @@ and allows images to build not only for the architecture and operating system
 that the user invoking the build happens to run, but for others as well.
 
 There is a small setup process depending on your operating system. Refer to [Preparation toward running Docker on ARM Mac: Building multi-arch images with Docker BuildX](https://medium.com/nttlabs/buildx-multiarch-2c6c2df00ca2).
+
+Also, your docker daemon must be set to use the containerd image store.
 
 #### Example Scenario
 

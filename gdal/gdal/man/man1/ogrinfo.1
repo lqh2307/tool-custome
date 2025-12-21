@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "OGRINFO" "1" "Sep 04, 2025" "" "GDAL"
+.TH "OGRINFO" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 ogrinfo \- Lists information about an OGR-supported data source.
 .SH SYNOPSIS
@@ -83,7 +83,7 @@ Added in version 3.2.
 .TP
 .B \-json
 Display the output in json format, conforming to the
-ogrinfo_output.schema.json \X'tty: link https://github.com/OSGeo/gdal/blob/release/3.11/apps/data/ogrinfo_output.schema.json'\fI\%ogrinfo_output.schema.json\fP\X'tty: link'
+ogrinfo_output.schema.json \X'tty: link https://github.com/OSGeo/gdal/blob/release/3.12/apps/data/ogrinfo_output.schema.json'\fI\%ogrinfo_output.schema.json\fP\X'tty: link'
 schema.
 .sp
 Added in version 3.7.
@@ -111,9 +111,6 @@ Enable random layer reading mode, i.e. iterate over features in the order
 they are found in the dataset, and not layer per layer. This can be
 significantly faster for some formats (for example OSM, GMLAS).
 \-rl cannot be used with \-sql.
-.sp
-Added in version 2.2.
-
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -155,7 +152,7 @@ system, layer schema, extents, and feature count.
 .B \-where <restricted_where>
 An attribute query in a restricted form of the queries used in the SQL
 \fIWHERE\fP statement. Only features matching the attribute query will be
-reported. Starting with GDAL 2.1, the \fB@<filename>\fP syntax can be used to
+reported. The \fB@<filename>\fP syntax can be used to
 indicate that the content is in the pointed filename.
 .sp
 Example of \fB\-where\fP and quoting:
@@ -173,8 +170,8 @@ Note: \-dialect is ignored with \-where. Use \-sql instead of \-where if you wan
 .INDENT 0.0
 .TP
 .B \-sql <statement>|@<filename>
-Execute the indicated SQL statement and return the result. Starting with
-GDAL 2.1, the \fB@<filename>\fP syntax can be used to indicate that the content is
+Execute the indicated SQL statement and return the result.
+The \fB@<filename>\fP syntax can be used to indicate that the content is
 in the pointed filename (e.g \fB@my_select.txt\fP where my_select.txt is a file
 in the current directory). Data can also be edited with SQL INSERT, UPDATE,
 DELETE, DROP TABLE, ALTER TABLE etc. Editing capabilities depend on the selected
@@ -228,8 +225,7 @@ If set to \fBNO\fP, the feature dump will not display the geometry. If set to
 \fBSUMMARY\fP, only a summary of the geometry will be displayed. If set to
 \fBYES\fP or \fBISO_WKT\fP, the geometry will be reported in full OGC WKT format.
 If set to \fBWKT\fP the geometry will be reported in legacy \fBWKT\fP\&. Default
-value is \fBYES\fP\&. (WKT and \fBISO_WKT\fP are available starting with GDAL 2.1,
-which also changes the default to ISO_WKT)
+value is \fBYES\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP

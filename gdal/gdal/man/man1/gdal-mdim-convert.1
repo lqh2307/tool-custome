@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-MDIM-CONVERT" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-MDIM-CONVERT" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal-mdim-convert \- Convert a multidimensional dataset
 .sp
@@ -50,7 +50,7 @@ Common Options:
   \-h, \-\-help                                           Display help message and exit
   \-\-json\-usage                                         Display usage as JSON document and exit
   \-\-config <KEY>=<VALUE>                               Configuration option [may be repeated]
-  \-\-progress                                           Display progress bar
+  \-q, \-\-quiet                                          Quiet mode (no progress bar)
 
 Options:
   \-f, \-\-of, \-\-format, \-\-output\-format <OUTPUT\-FORMAT>  Output format
@@ -131,11 +131,11 @@ The following options are processed in that order:
 .TP
 .B [{axis1},{axis2},...] is the argument of  \fI\%GDALMDArray::Transpose()\fP\&.
 For example, transpose=[1,0] switches the axis order of a 2D array.
-See \fI\%Example 5\fP\&.
+See \fI\%Example 6\fP\&.
 .UNINDENT
 .IP \(bu 2
 {view_expr} is the value of the \fIviewExpr\fP argument of \fI\%GDALMDArray::GetView()\fP\&.
-See \fI\%Example 4\fP\&.
+See \fI\%Example 5\fP\&.
 .UNINDENT
 .sp
 When specifying a view_expr that performs a slicing or subsetting on a dimension, the
@@ -160,7 +160,7 @@ they are copied under the target root group
 <group_spec> may be just a group name, potentially using a fully qualified
 syntax (/group/subgroup/subsubgroup_name). Or it can be a combination of options
 with the syntax:
-name={src_group_name}[,dstname={dst_group_name}][,recursive=no]
+\fBname={src_group_name}[,dstname={dst_group_name}][,recursive=no]\fP
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -171,19 +171,23 @@ and whose values are monotonically sorted.
 <subset_spec> follows exactly the \X'tty: link https://portal.opengeospatial.org/files/09-147r3'\fI\%OGC WCS 2.0 KVP encoding\fP\X'tty: link'
 for subsetting.
 .sp
-That is dim_name(min_val,max_val) or dim_name(sliced_val)
-The first syntax will subset the dimension dim_name to values in the
+That is \fBdim_name(min_val,max_val)\fP or \fBdim_name(sliced_val)\fP
+The first syntax will subset the dimension \fBdim_name\fP to values in the
 [min_val,max_val] range. The second syntax will slice the dimension dim_name
 to value sliced_val (and this dimension will be removed from the arrays
 that reference to it)
 .sp
+Beware that dimension name is case sensitive.
+.sp
+Several subsetting operations along different dimensions can be specified by repeating the option.
+.sp
 Using \-\-subset is incompatible with specifying a \fIview\fP option in \-\-array.
 .sp
-See \fI\%Example 2\fP\&.
+See \fI\%Example 2\fP or \fI\%Example 3\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-scaleaxes <scaleaxes_spec>
+.B \-\-scale\-axes <scaleaxes_spec>
 Applies a integral scale factor to one or several dimensions, that is
 extract 1 value every N values (without resampling).
 .sp
@@ -192,11 +196,13 @@ SCALEAXES parameter of
 \X'tty: link https://portal.opengeospatial.org/files/12-039'\fI\%OGC WCS 2.0 Scaling Extension\fP\X'tty: link',
 but limited to integer scale factors.
 .sp
-That is <dim1_name>(<scale_factor>)[,<dim2_name>(<scale_factor>)]...
+That is \fB<dim1_name>(<scale_factor>)\fP\&.
 .sp
-Using \-\-scaleaxes is incompatible with specifying a \fIview\fP option in \-\-array.
+Several scaling operations along different dimensions can be specified by repeating the option.
 .sp
-See \fI\%Example 3\fP\&.
+Using \-\-scale\-axes is incompatible with specifying a \fIview\fP option in \-\-array.
+.sp
+See \fI\%Example 4\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -208,14 +214,14 @@ failures will cause the process to fail.
 .SS Advanced options
 .INDENT 0.0
 .TP
-.B \-\-oo <NAME>=<VALUE>
+.B \-\-oo, \-\-open\-option <NAME>=<VALUE>
 Dataset open option (format specific).
 .sp
 May be repeated.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-if <format>
+.B \-\-if, \-\-input\-format <format>
 Format/driver name to be attempted to open the input file(s). It is generally
 not necessary to specify it, but it can be used to skip automatic driver
 detection, when it fails to select the appropriate driver.
@@ -244,16 +250,25 @@ gdal mdim convert in.nc out.tif \-\-subset \(dqtime(\e\(dq2010\-01\-01\e\(dq)\(d
 .EE
 .UNINDENT
 .UNINDENT
-.SS Example 3: Subsample along X and Y axis
+.SS Example 3: Extract a a 3D chunk from a time\-indexed GRIB file into a multiband GeoTIFF.
 .INDENT 0.0
 .INDENT 3.5
 .sp
 .EX
-gdal mdim convert in.nc out.nc \-\-scaleaxes \(dqX(2),Y(2)\(dq
+gdal mdim convert /vsicurl/https://tgftp.nws.noaa.gov/SL.us008001/ST.opnl/DF.gr2/DC.ndfd/AR.conus/VP.001\-003/ds.qpf.bin tst.tif \-\-subset \(dqTIME(1763164800,1763251200)\(dq \-\-array QPF_0\-SFC \-\-co COMPRESS=DEFLATE
 .EE
 .UNINDENT
 .UNINDENT
-.SS Example 4: Reorder the values of an array
+.SS Example 4: Subsample along x and y axis
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.EX
+gdal mdim convert in.nc out.nc \-\-scale\-axes \(dqx(2),y(2)\(dq
+.EE
+.UNINDENT
+.UNINDENT
+.SS Example 5: Reorder the values of an array
 .sp
 Reorder the values of the time,Y,X array along the Y axis from top\-to\-bottom
 to bottom\-to\-top (or the reverse)
@@ -265,7 +280,7 @@ gdal mdim convert in.nc out.nc \-\-array \(dqname=temperature,view=[:,::\-1,:]\(
 .EE
 .UNINDENT
 .UNINDENT
-.SS Example 5: Transpose an array that has X,Y,time dimension order to time,Y,X
+.SS Example 6: Transpose an array that has X,Y,time dimension order to time,Y,X
 .INDENT 0.0
 .INDENT 3.5
 .sp

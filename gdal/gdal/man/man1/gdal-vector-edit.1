@@ -27,9 +27,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL-VECTOR-EDIT" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL-VECTOR-EDIT" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
-gdal-vector-edit \- Edit metadata of a vetor dataset
+gdal-vector-edit \- Edit metadata of a vector dataset
 .sp
 Added in version 3.11.
 
@@ -50,7 +50,7 @@ Common Options:
   \-h, \-\-help                                           Display help message and exit
   \-\-json\-usage                                         Display usage as JSON document and exit
   \-\-config <KEY>=<VALUE>                               Configuration option [may be repeated]
-  \-\-progress                                           Display progress bar
+  \-q, \-\-quiet                                          Quiet mode (no progress bar)
 
 Options:
   \-l, \-\-layer, \-\-input\-layer <INPUT\-LAYER>             Input layer name(s) [may be repeated]
@@ -59,9 +59,11 @@ Options:
   \-\-lco, \-\-layer\-creation\-option <KEY>=<VALUE>         Layer creation option [may be repeated]
   \-\-overwrite                                          Whether overwriting existing output is allowed
   \-\-update                                             Whether to open existing dataset in update mode
-  \-\-overwrite\-layer                                    Whether overwriting existing layer is allowed
+  \-\-overwrite\-layer                                    Whether overwriting existing output is allowed
   \-\-append                                             Whether appending to existing layer is allowed
+                                                       Mutually exclusive with \-\-upsert
   \-\-output\-layer <OUTPUT\-LAYER>                        Output layer name
+  \-\-skip\-errors                                        Skip errors when writing features
   \-\-active\-layer <ACTIVE\-LAYER>                        Set active layer (if not specified, all)
   \-\-geometry\-type <GEOMETRY\-TYPE>                      Layer geometry type
   \-\-crs <CRS>                                          Override CRS (without reprojection)
@@ -69,10 +71,14 @@ Options:
   \-\-unset\-metadata <KEY>                               Remove dataset metadata item [may be repeated]
   \-\-layer\-metadata <KEY>=<VALUE>                       Add/update layer metadata item [may be repeated]
   \-\-unset\-layer\-metadata <KEY>                         Remove layer metadata item [may be repeated]
+  \-\-unset\-fid                                          Unset the identifier of each feature and the FID column name
 
 Advanced Options:
   \-\-if, \-\-input\-format <INPUT\-FORMAT>                  Input formats [may be repeated]
   \-\-oo, \-\-open\-option <KEY>=<VALUE>                    Open options [may be repeated]
+  \-\-output\-oo, \-\-output\-open\-option <KEY>=<VALUE>      Output open options [may be repeated]
+  \-\-upsert                                             Upsert features (implies \(aqappend\(aq)
+                                                       Mutually exclusive with \-\-append
 .EE
 .UNINDENT
 .UNINDENT
@@ -93,7 +99,7 @@ Which output vector format to use. Allowed values may be given by
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-co <NAME>=<VALUE>
+.B \-\-co, \-\-creation\-option <NAME>=<VALUE>
 Many formats have one or more optional dataset creation options that can be
 used to control particulars about the file created. For instance,
 the GeoPackage driver supports creation options to control the version.
@@ -171,17 +177,27 @@ Add/update metadata item, at the layer level.
 .B \-\-unset\-layer\-metadata <KEY>
 Remove metadata item, at the layer level.
 .UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-unset\-fid
+Added in version 3.12.
+
+.sp
+Can be specified to prevent the name of the source FID column and source
+feature IDs from being reused for the target layer. This option can for
+example be useful if selecting source features with a ORDER BY clause.
+.UNINDENT
 .SS Advanced options
 .INDENT 0.0
 .TP
-.B \-\-oo <NAME>=<VALUE>
+.B \-\-oo, \-\-open\-option <NAME>=<VALUE>
 Dataset open option (format specific).
 .sp
 May be repeated.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-if <format>
+.B \-\-if, \-\-input\-format <format>
 Format/driver name to be attempted to open the input file(s). It is generally
 not necessary to specify it, but it can be used to skip automatic driver
 detection, when it fails to select the appropriate driver.

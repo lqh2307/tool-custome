@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_RETILE" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDAL_RETILE" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdal_retile \- Retiles a set of tiles and/or build tiled pyramid levels.
 .SH SYNOPSIS
@@ -90,9 +90,8 @@ schema and contain the name of the source tiles(s)
 .INDENT 0.0
 .TP
 .B \-of <format>
-Select the output format. Starting with GDAL 2.3, if not specified, the
-format is guessed from the extension (previously was GTiff). Use the short
-format name.
+Select the output format. If not specified, the format is guessed from the
+extension. Use the short format name.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -129,9 +128,6 @@ output file.  If not specified, 256 x 256 is the default
 .TP
 .B \-overlap <val_in_pixel>
 Overlap in pixels between consecutive tiles. If not specified, 0 is the default
-.sp
-Added in version 2.2.
-
 .UNINDENT
 .INDENT 0.0
 .TP

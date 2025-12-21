@@ -102,23 +102,21 @@ struct huge_parent
 class huge_helper
 {
   public:
-    huge_helper()
-        : hDB(nullptr), hNodes(nullptr), hEdges(nullptr), nodeSrs(nullptr),
-          pFirst(nullptr), pLast(nullptr), pFirstHref(nullptr),
-          pLastHref(nullptr), pFirstParent(nullptr), pLastParent(nullptr)
-    {
-    }
+    huge_helper() = default;
+    huge_helper(const huge_helper &) = delete;
+    huge_helper &operator=(const huge_helper &) = delete;
 
-    sqlite3 *hDB;
-    sqlite3_stmt *hNodes;
-    sqlite3_stmt *hEdges;
-    CPLString *nodeSrs;
-    struct huge_tag *pFirst;
-    struct huge_tag *pLast;
-    struct huge_href *pFirstHref;
-    struct huge_href *pLastHref;
-    struct huge_parent *pFirstParent;
-    struct huge_parent *pLastParent;
+    sqlite3 *hDB = nullptr;
+    sqlite3_stmt *hNodes = nullptr;
+    sqlite3_stmt *hEdges = nullptr;
+    CPLString *nodeSrs = nullptr;
+    struct huge_tag *pFirst = nullptr;
+    struct huge_tag *pLast = nullptr;
+    struct huge_href *pFirstHref = nullptr;
+    struct huge_href *pLastHref = nullptr;
+    struct huge_parent *pFirstParent = nullptr;
+    struct huge_parent *pLastParent = nullptr;
+    lru11::Cache<std::string, std::shared_ptr<OGRSpatialReference>> oSRSCache{};
 };
 
 static bool gmlHugeFileSQLiteInit(huge_helper *helper)
@@ -149,8 +147,8 @@ static bool gmlHugeFileSQLiteInit(huge_helper *helper)
     {
         const char osCommand[] = "CREATE TABLE gml_edges ("
                                  "     gml_id VARCHAR PRIMARY KEY, "
-                                 "     gml_string BLOB, "
-                                 "     gml_resolved BLOB, "
+                                 "     gml_string TEXT, "
+                                 "     gml_resolved TEXT, "
                                  "     node_from_id TEXT, "
                                  "     node_from_x DOUBLE, "
                                  "     node_from_y DOUBLE, "
@@ -414,10 +412,10 @@ static bool gmlHugeFileResolveEdges(huge_helper *helper)
             bError = false;
             pszGmlId = reinterpret_cast<const char *>(
                 sqlite3_column_text(hQueryStmt, 0));
-            if (sqlite3_column_type(hQueryStmt, 1) != SQLITE_NULL)
+            if (sqlite3_column_type(hQueryStmt, 1) == SQLITE_TEXT)
             {
-                pszGmlString = static_cast<const char *>(
-                    sqlite3_column_blob(hQueryStmt, 1));
+                pszGmlString = reinterpret_cast<const char *>(
+                    sqlite3_column_text(hQueryStmt, 1));
             }
             if (sqlite3_column_type(hQueryStmt, 2) != SQLITE_NULL)
             {
@@ -615,7 +613,7 @@ static bool gmlHugeFileResolveEdges(huge_helper *helper)
                         char *gmlText = CPLSerializeXMLTree(psNode);
                         sqlite3_reset(hUpdateStmt);
                         sqlite3_clear_bindings(hUpdateStmt);
-                        sqlite3_bind_blob(hUpdateStmt, 1, gmlText,
+                        sqlite3_bind_text(hUpdateStmt, 1, gmlText,
                                           static_cast<int>(strlen(gmlText)),
                                           SQLITE_STATIC);
                         sqlite3_bind_text(hUpdateStmt, 2, pszGmlId, -1,
@@ -755,14 +753,14 @@ static bool gmlHugeFileSQLiteInsert(huge_helper *helper)
         if (pItem->bIsNodeFromHref == false && pItem->bIsNodeToHref == false)
         {
             sqlite3_bind_null(helper->hEdges, 2);
-            sqlite3_bind_blob(
+            sqlite3_bind_text(
                 helper->hEdges, 3, pItem->gmlTagValue->c_str(),
                 static_cast<int>(strlen(pItem->gmlTagValue->c_str())),
                 SQLITE_STATIC);
         }
         else
         {
-            sqlite3_bind_blob(
+            sqlite3_bind_text(
                 helper->hEdges, 2, pItem->gmlTagValue->c_str(),
                 static_cast<int>(strlen(pItem->gmlTagValue->c_str())),
                 SQLITE_STATIC);
@@ -1009,7 +1007,7 @@ static int gmlHugeFindGmlId(const CPLXMLNode *psNode, CPLString **gmlId)
     return false;
 }
 
-static void gmlHugeFileNodeCoords(struct huge_tag *pItem,
+static void gmlHugeFileNodeCoords(huge_helper *helper, struct huge_tag *pItem,
                                   const CPLXMLNode *psNode,
                                   CPL_UNUSED CPLString **nodeSrs)
 {
@@ -1023,7 +1021,8 @@ static void gmlHugeFileNodeCoords(struct huge_tag *pItem,
         CPLCreateXMLNode(psTopoCurve, CXT_Element, "directedEdge");
     CPLXMLNode *psEdge = CPLCloneXMLTree(psNode);
     CPLAddXMLChild(psDirEdge, psEdge);
-    OGRGeometry *poTopoCurve = GML2OGRGeometry_XMLNode(psTopoCurve, FALSE);
+    OGRGeometry *poTopoCurve =
+        GML2OGRGeometry_XMLNode(psTopoCurve, FALSE, helper->oSRSCache);
     CPLDestroyXMLNode(psTopoCurve);
     if (poTopoCurve != nullptr)
     {
@@ -1177,7 +1176,8 @@ static void gmlHugeFileCheckXrefs(huge_helper *helper, const CPLXMLNode *psNode)
                     gmlHugeAddToHelper(helper, gmlId, gmlValue);
                 if (pItem != nullptr)
                 {
-                    gmlHugeFileNodeCoords(pItem, psNode, &(helper->nodeSrs));
+                    gmlHugeFileNodeCoords(helper, pItem, psNode,
+                                          &(helper->nodeSrs));
                 }
                 else
                 {

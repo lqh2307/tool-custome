@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALTINDEX" "1" "Sep 04, 2025" "" "GDAL"
+.TH "GDALTINDEX" "1" "Dec 18, 2025" "" "GDAL"
 .SH NAME
 gdaltindex \- Builds a shapefile as a raster tileindex.
 .SH SYNOPSIS
@@ -122,10 +122,9 @@ by \fI\%\-t_srs\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-f <format>
-The OGR format of the output tile index file. Starting with
-GDAL 2.3, if not specified, the format is guessed from the extension (previously
-was ESRI Shapefile).
+.B \-of <output_format>
+The OGR format of the output tile index file. If not specified, the format
+is guessed from the extension.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -215,8 +214,8 @@ formats such as databases, or for vector formats that do not support setting
 layer metadata items.
 .UNINDENT
 .sp
-Formats that support layer metadata are for example GeoPackage (\fB\-f GPKG\fP),
-FlatGeoBuf (\fB\-f FlatGeoBuf\fP) or PostGIS (\fB\-f PG\fP)
+Formats that support layer metadata are for example GeoPackage (\fB\-of GPKG\fP),
+FlatGeoBuf (\fB\-of FlatGeoBuf\fP) or PostGIS (\fB\-of PG\fP)
 .sp
 Setting \fI\%\-tr\fP and \fI\%\-ot\fP is recommended to avoid the GTI
 driver to have to deduce them by opening the first tile in the index. If the tiles
@@ -392,7 +391,7 @@ Perform the same command as before, but now we create a GeoPackage instead of a 
 .INDENT 3.5
 .sp
 .EX
-gdaltindex \-f GPKG doq_index.gpkg doq/*.tif
+gdaltindex \-of GPKG doq_index.gpkg doq/*.tif
 .EE
 .UNINDENT
 .UNINDENT
