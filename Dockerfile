@@ -46,6 +46,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
  		build-essential \
 		cmake \
+		python3-dev \
+		python3-numpy \
+		python3-rasterio \
 		libproj-dev \
 		libsqlite3-dev \
 		librasterlite2-dev \
