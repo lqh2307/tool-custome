@@ -44,11 +44,8 @@ ARG PREFIX_DIR=/usr/local/opt
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get upgrade -y \
 	&& apt-get install -y \
- 		build-essential \
+		build-essential \
 		cmake \
-		python3-dev \
-		python3-numpy \
-		python3-rasterio \
 		libproj-dev \
 		libsqlite3-dev \
 		librasterlite2-dev \
@@ -73,8 +70,8 @@ RUN cd ./gdal \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/gdal \
 	&& cmake --build . --parallel $(nproc) \
 	&& cmake --build . --target install \
- 	&& cd ../.. \
- 	&& rm -rf ./gdal
+	&& cd ../.. \
+	&& rm -rf ./gdal
 
 
 FROM ${TARGET_IMAGE} AS final
@@ -104,10 +101,11 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libtiff6 \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
-	&& /var/lib/apt/lists/*
+	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
+COPY ./scripts ${PREFIX_DIR}/scripts
 
 ENV PATH=${PREFIX_DIR}/scripts:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PATH}
 

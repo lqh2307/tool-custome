@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+
+import argparse
+import numpy
+import rasterio
+import os
+from multiprocessing import Pool
+from rasterio.windows import Window
+
+
+# ========= DECODE =========
+def rgb_to_data(rgb, base_val, interval):
+	rgb = rgb.astype(numpy.float64)
+
+	return base_val + (
+		rgb[0] * 256 * 256 +
+		rgb[1] * 256 +
+		rgb[2]
+	) * interval
+
+
+def _decode_worker(args):
+	rgb, base_val, interval = args
+
+	return rgb_to_data(rgb, base_val, interval)
+
+
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser(description="Decode RGB (Terrain-RGB) GeoTIFF back to DEM")
+	parser.add_argument("-in", "--input", required=True, help="Input DEM GeoTIFF")
+	parser.add_argument("-out", "--output", required=True, help="Output RGB GeoTIFF")
+	parser.add_argument("-b", "--base-val", type=float, default=-10000, help="Base value")
+	parser.add_argument("-i", "--interval", type=float, default=0.1, help="Interval")
+	parser.add_argument("-w", "--workers", type=int, default=1, help="Number of worker processes")
+	parser.add_argument("-c", "--compression", action="store_true", help="Enable compression for output GeoTIFF")
+
+	args = parser.parse_args()
+	workers = max(1, args.workers)
+
+	if os.path.exists(args.output):
+		os.remove(args.output)
+
+	with rasterio.open(args.input) as src:
+		profile = src.profile.copy()
+		profile.update(
+			dtype="float64",
+			count=1,
+			tiled=True,
+			blockxsize=512,
+			blockysize=512,
+			bigtiff="YES",
+		)
+
+		if args.compression:
+			profile.update(
+				compress="LZW",
+				predictor=3,
+			)
+
+		block_h, block_w = src.block_shapes[0]
+
+		with rasterio.open(args.output, "w", **profile) as dst:
+			if workers == 1:
+				for y in range(0, src.height, block_h):
+					for x in range(0, src.width, block_w):
+						w = Window(
+							x, y,
+							min(block_w, src.width - x),
+							min(block_h, src.height - y),
+						)
+
+						dst.write(rgb_to_data(src.read(window=w), args.base_val, args.interval).astype(numpy.float64), 1, window=w)
+			else:
+				with Pool(workers) as pool:
+					for y in range(0, src.height, block_h):
+						tasks = []
+						windows = []
+
+						for x in range(0, src.width, block_w):
+							w = Window(
+								x, y,
+								min(block_w, src.width - x),
+								min(block_h, src.height - y),
+							)
+
+							tasks.append((src.read(window=w), args.base_val, args.interval))
+
+							windows.append(w)
+
+						for w, dem in zip(windows, pool.imap(_decode_worker, tasks)):
+							dst.write(dem.astype(numpy.float64), 1, window=w)
