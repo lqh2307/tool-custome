@@ -39,15 +39,15 @@ def data_to_rgb(data, base_val, interval):
 
 if __name__ == "__main__":
 	signal.signal(signal.SIGINT, lambda sig, frame: (
-    LOGGER.info('Received "SIGINT" signal. Exitting...'),
+		LOGGER.info('Received "SIGINT" signal. Exitting...'),
 
-    sys.exit(0)
+		sys.exit(0)
 	))
 
 	signal.signal(signal.SIGTERM, lambda sig, frame: (
-    LOGGER.info('Received "SIGTERM" signal. Exitting...'),
+		LOGGER.info('Received "SIGTERM" signal. Exitting...'),
 
-    sys.exit(0)
+		sys.exit(0)
 	))
 
 	parser = argparse.ArgumentParser(description="Convert DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF")
@@ -117,4 +117,4 @@ if __name__ == "__main__":
 					for w, rgb in zip(window_generator(), pool.imap(worker, task_gen(), chunksize=1)):
 						dst.write(rgb, window=w)
 
-    LOGGER.info(f"Converted DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF {args.input} -> {args.output}!")
+		LOGGER.info(f"Converted DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF {args.input} -> {args.output}!")

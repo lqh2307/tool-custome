@@ -107,7 +107,7 @@ COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${PREFIX_DIR}/scripts:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PATH}
+ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PATH}:${PREFIX_DIR}/scripts
 
 VOLUME /data
 

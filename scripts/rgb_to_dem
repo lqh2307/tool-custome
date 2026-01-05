@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
-  LOGGER.info(f"Decode RGB (Terrain-RGB) GeoTIFF to DEM {args.input} -> {args.output}...")
+	LOGGER.info(f"Decode RGB (Terrain-RGB) GeoTIFF to DEM {args.input} -> {args.output}...")
 
 	with rasterio.open(args.input) as src:
 		profile = src.profile.copy()
@@ -90,7 +90,7 @@ if __name__ == "__main__":
 					yield Window(x, y, min(block_w, src.width - x), h)
 
 		with rasterio.open(args.output, "w", **profile) as dst:
-      workers = max(1, args.workers)
+			workers = max(1, args.workers)
 
 			# ========= SINGLE PROCESS =========
 			if workers == 1:
@@ -110,4 +110,4 @@ if __name__ == "__main__":
 					for w, dem in zip(window_generator(), pool.imap(worker, task_gen(), chunksize=1)):
 						dst.write(dem, 1, window=w)
 
-    LOGGER.info(f"Converted RGB (Terrain-RGB) GeoTIFF to DEM {args.input} -> {args.output}!")
+		LOGGER.info(f"Converted RGB (Terrain-RGB) GeoTIFF to DEM {args.input} -> {args.output}!")
