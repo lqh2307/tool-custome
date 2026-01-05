@@ -8,7 +8,7 @@ import rasterio
 import logging
 import signal
 import numpy
-import os
+import sys
 
 
 # ========= LOGS =========
@@ -72,8 +72,7 @@ if __name__ == "__main__":
 				predictor=3,
 			)
 
-		if os.path.exists(args.output):
-			os.remove(args.output)
+		args.output.unlink(missing_ok=True)
 
 		block_h, block_w = src.block_shapes[0]
 
