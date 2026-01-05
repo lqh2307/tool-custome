@@ -1,22 +1,35 @@
 #!/usr/bin/env python3
 
-import argparse
-import numpy
-import rasterio
-import os
-from multiprocessing import Pool
 from rasterio.windows import Window
+from multiprocessing import Pool
+from pathlib import Path
+import argparse
+import rasterio
+import logging
+import signal
+import numpy
+import os
+
+
+# ========= LOGS =========
+LOGGER = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)5s: %(message)s"))
+LOGGER.addHandler(handler)
+LOGGER.setLevel(logging.INFO)
 
 
 # ========= ENCODE =========
 def data_to_rgb(data, base_val, interval):
-	data = data.astype(numpy.float64)
+	data = data.astype(numpy.float64, copy=False)
+
 	data = (data - base_val) / interval
 
+	data_range = data.max() - data.min()
 	if data.max() - data.min() > 256 ** 3:
-		raise ValueError("Data range too large for RGB encoding")
+		LOGGER.error(f"Data range {data_range} too large for RGB encoding")
 
-	rgb = numpy.zeros((3, *data.shape), dtype=numpy.uint8)
+	rgb = numpy.empty((3, *data.shape), dtype=numpy.uint8)
 	rgb[2] = data % 256
 	rgb[1] = (data // 256) % 256
 	rgb[0] = (data // (256 * 256)) % 256
@@ -24,30 +37,36 @@ def data_to_rgb(data, base_val, interval):
 	return rgb
 
 
-def _encode_worker(args):
-	data, base_val, interval = args
-
-	return data_to_rgb(data, base_val, interval)
-
-
 if __name__ == "__main__":
+	signal.signal(signal.SIGINT, lambda sig, frame: (
+    LOGGER.info('Received "SIGINT" signal. Exitting...'),
+
+    sys.exit(0)
+	))
+
+	signal.signal(signal.SIGTERM, lambda sig, frame: (
+    LOGGER.info('Received "SIGTERM" signal. Exitting...'),
+
+    sys.exit(0)
+	))
+
 	parser = argparse.ArgumentParser(description="Convert DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF")
-	parser.add_argument("-in", "--input", required=True, help="Input DEM GeoTIFF")
-	parser.add_argument("-out", "--output", required=True, help="Output RGB GeoTIFF")
-	parser.add_argument("-b", "--base-val", type=float, default=-10000, help="Base value")
-	parser.add_argument("-i", "--interval", type=float, default=0.1, help="Interval")
-	parser.add_argument("-w", "--workers", type=int, default=1, help="Number of worker processes")
-	parser.add_argument("-c", "--compression", action="store_true", help="Enable compression for output GeoTIFF")
+	parser.add_argument("-in", "--input", required=True, type=Path, help="Input DEM GeoTIFF")
+	parser.add_argument("-out", "--output", required=True, type=Path, help="Output RGB GeoTIFF")
+	parser.add_argument("-b", "--base-val", required=False, type=float, default=-10000, help="Base value")
+	parser.add_argument("-i", "--interval", required=False, type=float, default=0.1, help="Interval")
+	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
+	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output GeoTIFF")
 
 	args = parser.parse_args()
-	workers = max(1, args.workers)
+
+	LOGGER.info(f"Convert DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF {args.input} -> {args.output}...")
 
 	with rasterio.open(args.input) as src:
 		profile = src.profile.copy()
 		profile.update(
 			dtype="uint8",
 			count=3,
-			nodata=None,
 			tiled=True,
 			blockxsize=512,
 			blockysize=512,
@@ -60,35 +79,42 @@ if __name__ == "__main__":
 				predictor=2,
 			)
 
+		if os.path.exists(args.output):
+			os.remove(args.output)
+
 		block_h, block_w = src.block_shapes[0]
 
+		# ========= WORKER WRAPPER =========
+		def worker(args):
+			return data_to_rgb(*args)
+
+		# ========= WINDOW GENERATOR =========
+		def window_generator():
+			for y in range(0, src.height, block_h):
+				h = min(block_h, src.height - y)
+
+				for x in range(0, src.width, block_w):
+					yield Window(x, y, min(block_w, src.width - x), h)
+
 		with rasterio.open(args.output, "w", **profile) as dst:
+			workers = max(1, args.workers)
+
+			# ========= SINGLE PROCESS =========
 			if workers == 1:
-				for y in range(0, src.height, block_h):
-					for x in range(0, src.width, block_w):
-						w = Window(
-							x, y,
-							min(block_w, src.width - x),
-							min(block_h, src.height - y),
+				for w in window_generator():
+					dst.write(data_to_rgb(src.read(1, window=w), args.base_val, args.interval), window=w)
+			# ========= MULTI PROCESS =========
+			else:
+				def task_gen():
+					for w in window_generator():
+						yield (
+							src.read(1, window=w),
+							args.base_val,
+							args.interval,
 						)
 
-						dst.write(data_to_rgb(src.read(1, window=w), args.base_val, args.interval), window=w)
-			else:
 				with Pool(workers) as pool:
-					for y in range(0, src.height, block_h):
-						tasks = []
-						windows = []
+					for w, rgb in zip(window_generator(), pool.imap(worker, task_gen(), chunksize=1)):
+						dst.write(rgb, window=w)
 
-						for x in range(0, src.width, block_w):
-							w = Window(
-								x, y,
-								min(block_w, src.width - x),
-								min(block_h, src.height - y),
-							)
-
-							tasks.append((src.read(1, window=w), args.base_val, args.interval))
-
-							windows.append(w)
-
-						for w, rgb in zip(windows, pool.imap(_encode_worker, tasks)):
-							dst.write(rgb, window=w)
+    LOGGER.info(f"Converted DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF {args.input} -> {args.output}!")
