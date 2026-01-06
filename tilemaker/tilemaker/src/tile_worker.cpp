@@ -402,17 +402,19 @@ void ProcessLayer(
 	std::string layerName = sharedData.layers.layers[ltx.at(0)].name;
 	vtzero::layer_builder vtLayer{tile, layerName, sharedData.config.mvtVersion, bbox.hires ? 8192u : 4096u};
 
-	vtzero::layer existingLayer = existingTile.get_layer_by_name(layerName);
-	if (existingLayer) {
-		while (auto feature = existingLayer.next_feature()) {
-			vtzero::geometry_feature_builder fb{vtLayer};
-			if (feature.has_id())
-				fb.set_id(feature.id());
-			fb.set_geometry(feature.geometry());
-			while (auto property = feature.next_property()) {
-				fb.add_property(property.key(), property.value());
+	if (!existingTile.empty()) {
+		vtzero::layer existingLayer = existingTile.get_layer_by_name(layerName);
+		if (existingLayer) {
+			while (auto feature = existingLayer.next_feature()) {
+				vtzero::geometry_feature_builder fb{vtLayer};
+				if (feature.has_id())
+					fb.set_id(feature.id());
+				fb.set_geometry(feature.geometry());
+				while (auto property = feature.next_property()) {
+					fb.add_property(property.key(), property.value());
+				}
+				fb.commit();
 			}
-			fb.commit();
 		}
 	}
 
