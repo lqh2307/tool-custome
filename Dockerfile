@@ -45,6 +45,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get upgrade -y \
 	&& apt-get install -y \
 		build-essential \
+		libsqlite3-dev \
 		zlib1g-dev \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
@@ -53,13 +54,11 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 COPY ./tippecanoe .
 
 RUN cd ./tippecanoe \
-	&& mkdir -p ./build \
-	&& cd ./build \
 	&& PREFIX=${PREFIX_DIR}/tippecanoe \
-		make -f ../Makefile -j$(nproc) \
+		make -j$(nproc) \
 	&& PREFIX=${PREFIX_DIR}/tippecanoe \
-		make -f ../Makefile install \
-	&& cd ../.. \
+		make install \
+	&& cd .. \
 	&& rm -rf ./tippecanoe
 
 
