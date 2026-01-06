@@ -37,6 +37,32 @@ RUN cd ./tilemaker \
 	&& rm -rf ./tilemaker
 
 
+FROM ${BUILDER_IMAGE} AS tippecanoe-builder
+
+ARG PREFIX_DIR=/usr/local/opt
+
+RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
+	&& apt-get upgrade -y \
+	&& apt-get install -y \
+		build-essential \
+		zlib1g-dev \
+	&& apt-get -y --purge autoremove \
+	&& apt-get clean \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY ./tippecanoe .
+
+RUN cd ./tippecanoe \
+	&& mkdir -p ./build \
+	&& cd ./build \
+	&& PREFIX=${PREFIX_DIR}/tippecanoe \
+		make -f ../Makefile -j$(nproc) \
+	&& PREFIX=${PREFIX_DIR}/tippecanoe \
+		make -f ../Makefile install \
+	&& cd ../.. \
+	&& rm -rf ./tippecanoe
+
+
 FROM ${BUILDER_IMAGE} AS gdal-builder
 
 ARG PREFIX_DIR=/usr/local/opt
@@ -90,6 +116,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libboost-filesystem1.83.0 \
 		libboost-program-options1.83.0 \
 		libboost-system1.83.0 \
+		zlib1g \
 		osmosis \
 		libproj25 \
 		librasterlite2-1 \
@@ -104,10 +131,11 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
+COPY --from=tippecanoe-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PATH}:${PREFIX_DIR}/scripts
+ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/tippecanoe/bin:${PREFIX_DIR}/gdal/bin:${PATH}:${PREFIX_DIR}/scripts
 
 VOLUME /data
 

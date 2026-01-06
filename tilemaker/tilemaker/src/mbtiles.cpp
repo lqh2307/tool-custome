@@ -21,23 +21,11 @@ void MBTiles::openForWriting(string &filename) {
 	db.init(filename);
 
 	db << "PRAGMA synchronous = OFF;";
-	try {
-		db << "PRAGMA application_id = 0x4d504258;";
-	} catch(runtime_error &e) {
-		cout << "Couldn't write SQLite application_id (not fatal): " << e.what() << endl;
-	}
-	try {
-		db << "PRAGMA encoding = 'UTF-8';";
-	} catch(runtime_error &e) {
-		cout << "Couldn't set SQLite default encoding (not fatal): " << e.what() << endl;
-	}
-	try {
-		db << "PRAGMA journal_mode=OFF;";
-	} catch(runtime_error &e) {
-		cout << "Couldn't turn journaling off (not fatal): " << e.what() << endl;
-	}
+	db << "PRAGMA application_id = 0x4d504258;";
+	db << "PRAGMA encoding = 'UTF-8';";
+	db << "PRAGMA journal_mode = OFF;";
+	db << "PRAGMA foreign_keys = OFF;";
 	db << "PRAGMA page_size = 65536;";
-	db << "VACUUM;"; // make sure page_size takes effect
 	db << "CREATE TABLE IF NOT EXISTS metadata (name text, value text, UNIQUE (name));";
 	db << "CREATE TABLE IF NOT EXISTS tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);";
 	db << "CREATE UNIQUE INDEX IF NOT EXISTS tile_index on tiles (zoom_level, tile_column, tile_row);";
