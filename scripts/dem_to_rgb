@@ -3,6 +3,7 @@
 from rasterio.windows import Window
 from multiprocessing import Pool
 from pathlib import Path
+import threading
 import argparse
 import rasterio
 import logging
@@ -29,7 +30,7 @@ def data_to_rgb(data, base_val, interval):
 	if data.max() - data.min() > 256 ** 3:
 		LOGGER.error(f"Data range {data_range} too large for RGB encoding")
 
-	rgb = numpy.empty((3, *data.shape), dtype=numpy.uint8)
+	rgb = numpy.zeros((3, *data.shape), dtype=numpy.uint8)
 	rgb[2] = data % 256
 	rgb[1] = (data // 256) % 256
 	rgb[0] = (data // (256 * 256)) % 256
@@ -38,17 +39,18 @@ def data_to_rgb(data, base_val, interval):
 
 
 if __name__ == "__main__":
-	signal.signal(signal.SIGINT, lambda sig, frame: (
-		LOGGER.info('Received "SIGINT" signal. Exitting...'),
+	if threading.current_thread() is threading.main_thread():
+		signal.signal(signal.SIGINT, lambda sig, frame: (
+			LOGGER.info('Received "SIGINT" signal. Exitting...'),
 
-		sys.exit(0)
-	))
+			sys.exit(0)
+		))
 
-	signal.signal(signal.SIGTERM, lambda sig, frame: (
-		LOGGER.info('Received "SIGTERM" signal. Exitting...'),
+		signal.signal(signal.SIGTERM, lambda sig, frame: (
+			LOGGER.info('Received "SIGTERM" signal. Exitting...'),
 
-		sys.exit(0)
-	))
+			sys.exit(0)
+		))
 
 	parser = argparse.ArgumentParser(description="Convert DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF")
 	parser.add_argument("-in", "--input", required=True, type=Path, help="Input DEM GeoTIFF")
@@ -67,6 +69,7 @@ if __name__ == "__main__":
 		profile.update(
 			dtype="uint8",
 			count=3,
+			nodata=0,
 			tiled=True,
 			blockxsize=512,
 			blockysize=512,
