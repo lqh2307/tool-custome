@@ -3,7 +3,7 @@
 Osmium -- OpenStreetMap data manipulation command line tool
 http://osmcode.org/osmium-tool/
 
-Copyright (C) 2013-2025  Jochen Topf <jochen@topf.org>
+Copyright (C) 2013-2026  Jochen Topf <jochen@topf.org>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -32,13 +32,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <string>
 
-enum {
-    initial_buffer_size = 1024U * 1024U
-};
-
-enum {
-    flush_buffer_size = 800U * 1024U
-};
+static constexpr std::size_t initial_buffer_size = 1024UL * 1024UL;
+static constexpr std::size_t flush_buffer_size = 800UL * 1024UL;
 
 ExportFormatPg::ExportFormatPg(const std::string& /*output_format*/,
                                const std::string& output_filename,

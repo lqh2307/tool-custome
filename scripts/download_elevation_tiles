@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+
+from multiprocessing.dummy import Pool as ThreadPool
+from math import ceil, floor
+from urllib import request
+from pathlib import Path
+import argparse
+import logging
+import shutil
+import signal
+import gzip
+import sys
+
+
+# ========= LOGS =========
+LOGGER = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)5s: %(message)s"))
+LOGGER.addHandler(handler)
+LOGGER.setLevel(logging.INFO)
+
+
+def get_tiles_from_bbox(bbox):
+	min_x, min_y = map(floor, bbox[:2])
+	max_x, max_y = map(ceil, bbox[2:])
+
+	for x in range(min_x, max_x):
+		for y in range(min_y, max_y):
+			hemisphere = "S" if y < 0 else "N"
+			meridian = "W" if x < 0 else "E"
+
+			dir_name = f"{hemisphere}{abs(y):02d}"
+			tile_name = f"{dir_name}{meridian}{abs(x):03d}.hgt"
+
+			yield dir_name, tile_name
+
+
+def download_tile(tile, output, compression):
+	dir_name, tile_name = tile
+
+	tile_path = output/dir_name/tile_name
+
+	url = f"https://elevation-tiles-prod.s3.us-east-1.amazonaws.com/skadi/{dir_name}/{tile_name}.gz"
+
+	LOGGER.info(f"Downloading elevation tile from '{url}'...")
+
+	try:
+		with request.urlopen(url) as res:
+			tile_path.parent.mkdir(parents=True, exist_ok=True)
+
+			if compression:
+				with open(tile_path.with_suffix(".gz"), "wb") as f:
+					f.write(res.read())
+			else:
+				with gzip.GzipFile(fileobj=res, mode="rb") as gz:
+					with open(tile_path, "wb") as f:
+						f.write(gz.read())
+	except Exception as e:
+		LOGGER.error(f"Failed to downloading elevation tile '{dir_name}/{tile_name}': {e}")
+
+
+if __name__ == "__main__":
+	signal.signal(signal.SIGINT, lambda sig, frame: (
+		LOGGER.info('Received "SIGINT" signal. Exitting...'),
+
+		sys.exit(0)
+	))
+
+	signal.signal(signal.SIGTERM, lambda sig, frame: (
+		LOGGER.info('Received "SIGTERM" signal. Exitting...'),
+
+		sys.exit(0)
+	))
+
+	parser = argparse.ArgumentParser(description="Download elevation tiles")
+	parser.add_argument("-o", "--output", required=False, type=Path, default="data", help="Output directory path")
+	parser.add_argument("-b", "--bbox", required=False, type=str, default="-180,-90,180,90", help="Only download tiles covered by bounding box coordinates in the format 'minX,minY,maxX,maxY'")
+	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
+	parser.add_argument("-c", "--compression", action="store_true", help="Enable compression for output HGT")
+	parser.add_argument("-f", "--force", required=False, action="store_true", help="Force delete all elevation tiles and redownload")
+
+	args = parser.parse_args()
+
+	LOGGER.info(f"Get elevation tiles with BBox: {args.bbox}")
+
+	# Parse and validate bbox
+	try:
+		bbox = min_x, min_y, max_x, max_y = [
+			float(x) for x in args.bbox.split(",")]
+
+		if min_x > max_x or min_x < -180 or max_x > 180 or min_y > max_y or min_y < -90 or max_y > 90:
+			LOGGER.error(f"Invalid BBox: {bbox}")
+
+			sys.exit(1)
+	except ValueError:
+		LOGGER.error(
+			f"'{args.bbox}' is not a comma-separated string of BBox coordinates")
+
+		sys.exit(1)
+
+	# Force
+	if args.force and args.output.exists():
+		LOGGER.info(f"Deleting old tiles in {args.output}...")
+
+		shutil.rmtree(args.output)
+
+	# ========= WORKER WRAPPER =========
+	def worker(tile):
+		download_tile(tile, args.output, args.compression)
+
+	# ========= TILE GENERATOR =========
+	def tile_generator():
+		for tile_name, dir_name in get_tiles_from_bbox(bbox):
+			if not args.force and (args.output / dir_name / tile_name).exists():
+				continue
+			else:
+				yield (tile_name, dir_name)
+
+	# ThreadPool download
+	total_downloaded = 0
+	for _ in ThreadPool(max(1, args.workers)).imap_unordered(worker, tile_generator()):
+		total_downloaded += 1
+
+	LOGGER.info(f"Downloaded {total_downloaded} elevation tiles to {args.output}!")

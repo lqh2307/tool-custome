@@ -20,7 +20,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 			zlib1g-dev \
 			liblz4-dev \
 			libexpat1-dev \
-			pandoc \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*

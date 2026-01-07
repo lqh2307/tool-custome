@@ -1,4 +1,6 @@
 *
 !tilemaker/tilemaker
-!osmium-tool/osmium-tool
 !gdal/gdal
+!osmium-tool/osmium-tool
+!scripts
+!tippecanoe/tippecanoe

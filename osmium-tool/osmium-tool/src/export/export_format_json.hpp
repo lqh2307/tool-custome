@@ -6,7 +6,7 @@
 Osmium -- OpenStreetMap data manipulation command line tool
 https://osmcode.org/osmium-tool/
 
-Copyright (C) 2013-2025  Jochen Topf <jochen@topf.org>
+Copyright (C) 2013-2026  Jochen Topf <jochen@topf.org>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -66,8 +66,11 @@ public:
                      osmium::io::fsync fsync,
                      const options_type& options);
 
-    ~ExportFormatJSON() override {
-        close();
+    ~ExportFormatJSON() noexcept override {
+        try {
+            close();
+        } catch (...) {
+        }
     }
 
     void node(const osmium::Node& node) override;

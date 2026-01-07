@@ -64,7 +64,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 # 		libsqlite3-0 \
 # 		librasterlite2-1 \
 # 		libspatialite8 \
-# 		libpng16-16 \
+# 		libpng16-16t64 \
 # 		libjpeg-turbo8 \
 # 		libgif7 \
 # 		libwebp7 \

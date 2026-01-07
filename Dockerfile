@@ -1,6 +1,7 @@
 ARG BUILDER_IMAGE=ubuntu:24.04
 ARG TARGET_IMAGE=ubuntu:24.04
 
+# Build tilemaker
 FROM ${BUILDER_IMAGE} AS tilemaker-builder
 
 ARG PREFIX_DIR=/usr/local/opt
@@ -37,7 +38,8 @@ RUN cd ./tilemaker \
 	&& rm -rf ./tilemaker
 
 
-FROM ${BUILDER_IMAGE} AS osmium-tool-builder
+# Build tippecanoe
+FROM ${BUILDER_IMAGE} AS tippecanoe-builder
 
 ARG PREFIX_DIR=/usr/local/opt
 
@@ -45,34 +47,24 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get upgrade -y \
 	&& apt-get install -y \
 		build-essential \
-		cmake \
-		libosmium2-dev \
-		libprotozero-dev \
-		nlohmann-json3-dev \
-		libboost-program-options-dev \
-		libbz2-dev \
+		libsqlite3-dev \
 		zlib1g-dev \
-		liblz4-dev \
-		libexpat1-dev \
-		pandoc \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY ./osmium-tool .
+COPY ./tippecanoe .
 
-RUN cd ./osmium-tool \
-	&& mkdir -p ./build \
-	&& cd ./build \
-	&& cmake .. \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
-	&& cmake --build . --parallel $(nproc) \
-	&& cmake --build . --target install \
-	&& cd ../.. \
-	&& rm -rf ./osmium-tool
+RUN cd ./tippecanoe \
+	&& PREFIX=${PREFIX_DIR}/tippecanoe \
+		make -j$(nproc) \
+	&& PREFIX=${PREFIX_DIR}/tippecanoe \
+		make install \
+	&& cd .. \
+	&& rm -rf ./tippecanoe
 
 
+# Build gdal
 FROM ${BUILDER_IMAGE} AS gdal-builder
 
 ARG PREFIX_DIR=/usr/local/opt
@@ -80,7 +72,7 @@ ARG PREFIX_DIR=/usr/local/opt
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get upgrade -y \
 	&& apt-get install -y \
- 		build-essential \
+		build-essential \
 		cmake \
 		libproj-dev \
 		libsqlite3-dev \
@@ -106,17 +98,56 @@ RUN cd ./gdal \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/gdal \
 	&& cmake --build . --parallel $(nproc) \
 	&& cmake --build . --target install \
- 	&& cd ../.. \
- 	&& rm -rf ./gdal
+	&& cd ../.. \
+	&& rm -rf ./gdal
 
 
+# Build osmium-tool
+FROM ${BUILDER_IMAGE} AS osmium-tool-builder
+
+ARG PREFIX_DIR=/usr/local/opt
+
+RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
+	&& apt-get upgrade -y \
+	&& apt-get install -y \
+		build-essential \
+		cmake \
+		libosmium2-dev \
+		libprotozero-dev \
+		nlohmann-json3-dev \
+		libboost-program-options-dev \
+		libbz2-dev \
+		zlib1g-dev \
+		liblz4-dev \
+		libexpat1-dev \
+	&& apt-get -y --purge autoremove \
+	&& apt-get clean \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY ./osmium-tool .
+
+RUN cd ./osmium-tool \
+	&& mkdir -p ./build \
+	&& cd ./build \
+	&& cmake .. \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
+	&& cmake --build . --parallel $(nproc) \
+	&& cmake --build . --target install \
+	&& cd ../.. \
+	&& rm -rf ./osmium-tool
+
+
+# Build target
 FROM ${TARGET_IMAGE} AS final
 
 ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
-		pipx \
+		python3 \
+		python3-numpy \
+		python3-rasterio \
 		liblua5.4-0 \
 		shapelib \
 		libsqlite3-0 \
@@ -124,32 +155,33 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libboost-filesystem1.83.0 \
 		libboost-program-options1.83.0 \
 		libboost-system1.83.0 \
-		libosmium2-dev \
-		libprotozero-dev \
-		nlohmann-json3-dev \
-		libbz2-1.0 \
 		zlib1g \
-		liblz4-1 \
-		libexpat1 \
 		osmosis \
 		libproj25 \
 		librasterlite2-1 \
 		libspatialite8 \
-		libpng16-16 \
+		libpng16-16t64 \
 		libjpeg-turbo8 \
 		libgif7 \
 		libwebp7 \
 		libtiff6 \
-	&& pipx install rio-rgbify --include-deps \
+		libosmium2-dev \
+		libprotozero-dev \
+		nlohmann-json3-dev \
+		libbz2-1.0 \
+		liblz4-1 \
+		libexpat1 \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
-	&& rm -rf ~/.cache/pip /var/lib/apt/lists/*
+	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
-COPY --from=osmium-tool-builder ${PREFIX_DIR} ${PREFIX_DIR}
+COPY --from=tippecanoe-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
+COPY --from=osmium-tool-builder ${PREFIX_DIR} ${PREFIX_DIR}
+COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/osmium-tool/bin:${PREFIX_DIR}/gdal/bin:/root/.local/bin:${PATH}
+ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/tippecanoe/bin:${PREFIX_DIR}/gdal/bin:${PATH}:${PREFIX_DIR}/osmium-tool/bin:${PATH}:${PREFIX_DIR}/scripts
 
 VOLUME /data
 
