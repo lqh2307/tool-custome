@@ -1,6 +1,7 @@
 ARG BUILDER_IMAGE=ubuntu:24.04
 ARG TARGET_IMAGE=ubuntu:24.04
 
+# Build tilemaker
 FROM ${BUILDER_IMAGE} AS tilemaker-builder
 
 ARG PREFIX_DIR=/usr/local/opt
@@ -37,6 +38,7 @@ RUN cd ./tilemaker \
 	&& rm -rf ./tilemaker
 
 
+# Build tippecanoe
 FROM ${BUILDER_IMAGE} AS tippecanoe-builder
 
 ARG PREFIX_DIR=/usr/local/opt
@@ -62,6 +64,7 @@ RUN cd ./tippecanoe \
 	&& rm -rf ./tippecanoe
 
 
+# Build gdal
 FROM ${BUILDER_IMAGE} AS gdal-builder
 
 ARG PREFIX_DIR=/usr/local/opt
@@ -99,6 +102,43 @@ RUN cd ./gdal \
 	&& rm -rf ./gdal
 
 
+# Build osmium-tool
+FROM ${BUILDER_IMAGE} AS osmium-tool-builder
+
+ARG PREFIX_DIR=/usr/local/opt
+
+RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
+	&& apt-get upgrade -y \
+	&& apt-get install -y \
+		build-essential \
+		cmake \
+		libosmium2-dev \
+		libprotozero-dev \
+		nlohmann-json3-dev \
+		libboost-program-options-dev \
+		libbz2-dev \
+		zlib1g-dev \
+		liblz4-dev \
+		libexpat1-dev \
+	&& apt-get -y --purge autoremove \
+	&& apt-get clean \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY ./osmium-tool .
+
+RUN cd ./osmium-tool \
+	&& mkdir -p ./build \
+	&& cd ./build \
+	&& cmake .. \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
+	&& cmake --build . --parallel $(nproc) \
+	&& cmake --build . --target install \
+	&& cd ../.. \
+	&& rm -rf ./osmium-tool
+
+
+# Build target
 FROM ${TARGET_IMAGE} AS final
 
 ARG PREFIX_DIR=/usr/local/opt
@@ -125,6 +165,12 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libgif7 \
 		libwebp7 \
 		libtiff6 \
+		libosmium2-dev \
+		libprotozero-dev \
+		nlohmann-json3-dev \
+		libbz2-1.0 \
+		liblz4-1 \
+		libexpat1 \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -132,9 +178,10 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=tippecanoe-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
+COPY --from=osmium-tool-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/tippecanoe/bin:${PREFIX_DIR}/gdal/bin:${PATH}:${PREFIX_DIR}/scripts
+ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/tippecanoe/bin:${PREFIX_DIR}/gdal/bin:${PATH}:${PREFIX_DIR}/osmium-tool/bin:${PATH}:${PREFIX_DIR}/scripts
 
 VOLUME /data
 

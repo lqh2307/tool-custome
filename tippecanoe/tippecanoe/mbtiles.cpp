@@ -32,7 +32,7 @@ sqlite3 *mbtiles_open(char *dbname, char **argv, int forcetable) {
 	sqlite3_exec(outdb, "PRAGMA encoding = 'UTF-8';", NULL, NULL, NULL);
 	sqlite3_exec(outdb, "PRAGMA foreign_keys = OFF;", NULL, NULL, NULL);
 	sqlite3_exec(outdb, "PRAGMA page_size = 65536;", NULL, NULL, NULL);
-	sqlite3_exec(outdb, "PRAGMA locking_mode = EXCLUSIVE;", NULL, NULL, NULL);
+	sqlite3_exec(outdb, "PRAGMA journal_mode = OFF;", NULL, NULL, NULL);
 	sqlite3_exec(outdb, "CREATE TABLE IF NOT EXISTS metadata (name text, value text, UNIQUE (name));", NULL, NULL, NULL);
 	sqlite3_exec(outdb, "CREATE TABLE IF NOT EXISTS tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);", NULL, NULL, NULL);
 	sqlite3_exec(outdb, "CREATE UNIQUE INDEX IF NOT EXISTS tile_index on tiles (zoom_level, tile_column, tile_row);", NULL, NULL, NULL);
