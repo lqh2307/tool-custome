@@ -7,6 +7,7 @@ import hashlib
 import logging
 import signal
 import time
+import json
 import sys
 
 
@@ -43,7 +44,26 @@ def ensure_schema(cur, metadata_index, tiles_index):
 		cur.execute("ALTER TABLE tiles ADD COLUMN created BIGINT;")
 
 
-def expand_mbtiles(conn, cur, batch_size):
+def update_metadata(conn, cur, metadata):
+	try:
+		data = json.loads(metadata)
+	except json.JSONDecodeError as e:
+		raise ValueError(f"Invalid JSON metadata: {e}")
+
+	if not isinstance(data, dict):
+		raise ValueError("Metadata JSON must be an object")
+
+	insertQuery = "INSERT INTO metadata (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value;"
+
+	conn.execute("BEGIN;")
+
+	for key, value in data.items():
+		cur.execute(insertQuery, (key, json.dumps(value, ensure_ascii=False)))
+
+	conn.execute("COMMIT;")
+
+
+def update_hash_and_created(conn, cur, batch_size):
 	created = int(time.time() * 1000)
 
 	select_query = "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles WHERE hash IS NULL LIMIT ?;"
@@ -82,6 +102,7 @@ if __name__ == "__main__":
 	parser.add_argument("-b", "--batch-size", required=False, type=int, default=1000, help="Batch size")
 	parser.add_argument("-mi", "--metadata-index", required=False, action="store_true", help="Create metadata unique index")
 	parser.add_argument("-ti", "--tiles-index", required=False, action="store_true", help="Create tiles unique index")
+	parser.add_argument("-m", "--metadata", required=False, type=str, help="Metadata JSON string to update metadata table")
 
 	args = parser.parse_args()
 
@@ -94,7 +115,14 @@ if __name__ == "__main__":
 
 	ensure_schema(cur, args.metadata_index, args.tiles_index)
 
-	expand_mbtiles(conn, cur, args.batch_size)
+	LOGGER.info(f"Update MBTiles metadata {args.input}...")
+
+	if args.metadata:
+		update_metadata(conn, cur, args.metadata)
+
+	LOGGER.info(f"Update hash and created MBTiles {args.input}...")
+
+	update_hash_and_created(conn, cur, args.batch_size)
 
 	conn.close()
 
