@@ -9,6 +9,7 @@ import rasterio
 import logging
 import signal
 import numpy
+import time
 import sys
 
 
@@ -63,6 +64,8 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 
 	LOGGER.info(f"Convert DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF {args.input} -> {args.output}...")
+
+	t0 = time.time()
 
 	with rasterio.open(args.input) as src:
 		profile = src.profile.copy()
@@ -119,4 +122,4 @@ if __name__ == "__main__":
 					for w, rgb in zip(window_generator(), pool.imap(worker, task_gen(), chunksize=1)):
 						dst.write(rgb, window=w)
 
-		LOGGER.info(f"Converted DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF {args.input} -> {args.output}!")
+		LOGGER.info(f"Converted DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF {args.input} -> {args.output} in {time.time() - t0:.2f}s!")

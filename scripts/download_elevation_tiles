@@ -9,6 +9,7 @@ import argparse
 import logging
 import shutil
 import signal
+import time
 import gzip
 import sys
 
@@ -85,6 +86,8 @@ if __name__ == "__main__":
 
 	LOGGER.info(f"Get elevation tiles with BBox: {args.bbox}")
 
+	t0 = time.time()
+
 	# Parse and validate bbox
 	try:
 		bbox = min_x, min_y, max_x, max_y = [
@@ -123,4 +126,4 @@ if __name__ == "__main__":
 	for _ in ThreadPool(max(1, args.workers)).imap_unordered(worker, tile_generator()):
 		total_downloaded += 1
 
-	LOGGER.info(f"Downloaded {total_downloaded} elevation tiles to {args.output}!")
+	LOGGER.info(f"Downloaded {total_downloaded} elevation tiles to {args.output} in {time.time() - t0:.2f}s!")
