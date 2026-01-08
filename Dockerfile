@@ -182,7 +182,7 @@ COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=osmium-tool-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/tippecanoe/bin:${PREFIX_DIR}/gdal/bin:${PATH}:${PREFIX_DIR}/osmium-tool/bin:${PATH}:${PREFIX_DIR}/scripts
+ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/tippecanoe/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/osmium-tool/bin:${PREFIX_DIR}/scripts:${PATH}
 
 VOLUME /data
 
