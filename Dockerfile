@@ -148,6 +148,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		python3 \
 		python3-numpy \
 		python3-rasterio \
+		python3-pil \
 		liblua5.4-0 \
 		shapelib \
 		libsqlite3-0 \

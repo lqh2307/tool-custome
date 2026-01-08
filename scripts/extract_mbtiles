@@ -159,21 +159,15 @@ def get_mbtiles_format_from_tiles(cur):
 		raise ValueError("No row found")
 
 	if row[0].startswith(b"\x89PNG\r\n\x1a\n"):
-		if len(row[0]) > 25:
-			return "png", row[0][25] in (4, 6)
-		else:
-			return "png", False
+		return "png"
 	elif row[0].startswith(b"\xff\xd8"):
-		return "jpeg", False
+		return "jpeg"
 	elif row[0].startswith((b"GIF87a", b"GIF89a")):
-		return "gif", True
+		return "gif"
 	elif row[0].startswith(b"RIFF") and row[0][8:12] == b"WEBP":
-		if b"VP8X" in row[0][:40]:
-			return "webp", True
-		else:
-			return "webp", False
+		return "webp"
 	else:
-		return "pbf", False
+		return "pbf"
 
 
 def optimize_connect(cur):
@@ -214,6 +208,8 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 	final_bbox = None
 	final_minzoom = None
 	final_maxzoom = None
+	insert_query = None
+	select_query = None
 
 	if merge_strategy == "overwrite":
 		if extra_info:
@@ -230,8 +226,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 			insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data, hash, created) VALUES (?, ?, ?, ?, ?, ?)"
 		else:
 			insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)"
-			select_query = "SELECT src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE (src.zoom_level, src.tile_column, src.tile_row) > (?, ?, ?) ORDER BY src.zoom_level, src.tile_column, src.tile_row LIMIT ?;"
-			last = (-1, -1, -1)
+			select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
 
 	for path in inputs:
 		LOGGER.info(f"Merging {path}...")
@@ -239,7 +234,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 		src_conn = sqlite3.connect(path)
 		src_cur = src_conn.cursor()
 
-		cur.execute("SELECT name, value FROM metadata;")
+		src_cur.execute("SELECT name, value FROM metadata;")
 		src_metadata = { row[0]: row[1] for row in cur.fetchall() }
 
 		if "bounds" in src_metadata:
@@ -266,6 +261,9 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 		final_minzoom = limit_value(minzoom, None, final_minzoom)
 		final_maxzoom = limit_value(maxzoom, final_minzoom, None)
 
+		last_rowid = 0
+		format = get_mbtiles_format_from_tiles(src_cur)
+
 		src_conn.close()
 
 		cur.execute("ATTACH DATABASE ? AS src;", (str(path),))
@@ -273,16 +271,14 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 		conn.execute("BEGIN;")
 
 		if select_query:
-			format, hasAlpha = get_mbtiles_format_from_tiles(src_cur)
-
-			if (format == "png" or format == "webp") and hasAlpha:
+			if format == "png" or format == "webp":
 				while True:
-					cur.execute(select_query, (*last, args.batch_size))
+					cur.execute(select_query, (last_rowid, args.batch_size))
 					rows = cur.fetchall()
 					if not rows:
 						break
 
-					for z, x, y, new_data, old_data in rows:
+					for rowid, z, x, y, new_data, old_data in rows:
 						if old_data:
 							out = io.BytesIO()
 
@@ -306,9 +302,9 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 						else:
 							cur.execute(insert_query, (z, x, y, merged))
 
-						last = (z, x, y)
+						last_rowid = rowid
 			else:
-				cur.execute(insert_query)
+				raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{format}'")
 		else:
 			cur.execute(insert_query)
 
@@ -352,7 +348,7 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 			final_metadata["type"] = "overlay"
 
 		if "format" not in final_metadata:
-			_, final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
+			final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
 
 		if "minzoom" not in final_metadata:
 			if merge_info and merge_info["minzoom"] is not None:
