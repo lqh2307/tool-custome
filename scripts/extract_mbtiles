@@ -190,7 +190,11 @@ def ensure_schema(cur, metadata_index, tiles_index, extra_info):
 
 	if extra_info:
 		cur.execute("PRAGMA table_info (tiles);")
-		cols = { row[1] for row in cur.fetchall() }
+		rows = cur.fetchall()
+		if rows:
+			cols = { row[1] for row in rows }
+		else:
+			cols = {}
 
 		if "hash" not in cols:
 			cur.execute("ALTER TABLE tiles ADD COLUMN hash TEXT;")
@@ -234,7 +238,11 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 		src_cur = src_conn.cursor()
 
 		src_cur.execute("SELECT name, value FROM metadata;")
-		src_metadata = { row[0]: row[1] for row in cur.fetchall() }
+		src_rows = cur.fetchall()
+		if rows:
+			src_metadata = { src_row[0]: src_row[1] for src_row in src_rows }
+		else:
+			src_metadata = {}
 
 		if "bounds" in src_metadata:
 			parts = src_metadata["bounds"].split(",")
@@ -331,23 +339,48 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 		except json.JSONDecodeError as e:
 			raise ValueError(f"Invalid JSON metadata: {e}")
 
+	cur.execute("SELECT name, value FROM metadata;")
+	rows = cur.fetchall()
+	if rows:
+		metadata = { row[0]: row[1] for row in rows }
+	else:
+		metadata = {}
+
 	if "name" not in final_metadata:
-		final_metadata["name"] = "Unknown"
+		if "name" in metadata:
+			final_metadata["name"] = metadata["name"]
+		else:
+			final_metadata["name"] = "Unknown"
 
 	if "description" not in final_metadata:
-		final_metadata["description"] = final_metadata["name"]
+		if "description" in metadata:
+			final_metadata["description"] = metadata["description"]
+		else:
+			final_metadata["description"] = final_metadata["name"]
 
 	if "attribution" not in final_metadata:
-		final_metadata["attribution"] = "<b>Viettel HighTech</b>"
+		if "attribution" in metadata:
+			final_metadata["attribution"] = metadata["attribution"]
+		else:
+			final_metadata["attribution"] = "<b>Viettel HighTech</b>"
 
 	if "version" not in final_metadata:
-		final_metadata["version"] = "1.0.0"
+		if "version" in metadata:
+			final_metadata["version"] = metadata["version"]
+		else:
+			final_metadata["version"] = "1.0.0"
 
 	if "type" not in final_metadata:
-		final_metadata["type"] = "overlay"
+		if "type" in metadata:
+			final_metadata["type"] = metadata["type"]
+		else:
+			final_metadata["type"] = "overlay"
 
 	if "format" not in final_metadata:
-		final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
+		if "format" in metadata:
+			final_metadata["format"] = metadata["format"]
+		else:
+			final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
 
 	if "minzoom" not in final_metadata:
 		if merge_info and merge_info["minzoom"] is not None:
