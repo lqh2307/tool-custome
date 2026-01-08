@@ -73,14 +73,14 @@ def get_lonlat_from_xyz(x, y, z, position, scheme="tms"):
 	return [360 * (x / max_tile - 0.5), (360 * math.atan(math.exp(math.pi * (1 - 2 * y / max_tile))) / math.pi) - 90]
 
 
-def get_bbox_from_tiles(xMin, yMin, xMax, yMax, z, scheme = "tms"):
-	[lon_min, lat_max] = get_lonlat_from_xyz(xMin, yMin, z, "top-left", scheme)
-	[lon_max, lat_min] = get_lonlat_from_xyz(xMax, yMax, z, "bottom-right", scheme)
+def get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme = "tms"):
+	[lon_min, lat_max] = get_lonlat_from_xyz(x_min, y_min, z, "top-left", scheme)
+	[lon_max, lat_min] = get_lonlat_from_xyz(x_max, y_max, z, "bottom-right", scheme)
 
 	if lon_min > lon_max:
 		[lon_min, lon_max] = [lon_max, lon_min]
 
-	if (lat_min > lat_max):
+	if lat_min > lat_max:
 		[lat_min, lat_max] = [lat_max, lat_min]
 
 	return [lon_min, lat_min, lon_max, lat_max]
@@ -180,8 +180,7 @@ def optimize_connect(cur):
 
 def ensure_schema(cur, metadata_index, tiles_index, extra_info):
 	cur.execute("CREATE TABLE IF NOT EXISTS metadata (name TEXT NOT NULL, value TEXT NOT NULL, UNIQUE (name));")
-
-	cur.execute("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL, tile_row INTEGER NOT NULL, tile_data BLOB NOT NULL, hash TEXT, created BIGINT, UNIQUE (zoom_level, tile_column, tile_row));")
+	cur.execute("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL, tile_row INTEGER NOT NULL, tile_data BLOB NOT NULL, UNIQUE (zoom_level, tile_column, tile_row));")
 
 	if metadata_index:
 		cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS metadata_index ON metadata (name);")
@@ -223,9 +222,9 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 			insert_query = "INSERT OR IGNORE INTO tiles (zoom_level, tile_column, tile_row, tile_data) SELECT zoom_level, tile_column, tile_row, tile_data FROM src.tiles;"
 	else:
 		if extra_info:
-			insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data, hash, created) VALUES (?, ?, ?, ?, ?, ?)"
+			insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data, hash, created) VALUES (?, ?, ?, ?, ?, ?);"
 		else:
-			insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?)"
+			insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
 			select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
 
 	for path in inputs:
@@ -320,67 +319,67 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 
 
 def update_metadata(conn, cur, metadata_json, merge_info):
-		final_metadata = {}
+	final_metadata = {}
 
-		if metadata_json:
-			try:
-				user_meta = json.loads(metadata_json)
-				if not isinstance(user_meta, dict):
-					raise ValueError("Metadata JSON must be an object")
+	if metadata_json:
+		try:
+			user_meta = json.loads(metadata_json)
+			if not isinstance(user_meta, dict):
+				raise ValueError("Metadata JSON must be an object")
 
-				final_metadata.update(user_meta)
-			except json.JSONDecodeError as e:
-				raise ValueError(f"Invalid JSON metadata: {e}")
+			final_metadata.update(user_meta)
+		except json.JSONDecodeError as e:
+			raise ValueError(f"Invalid JSON metadata: {e}")
 
-		if "name" not in final_metadata:
-			final_metadata["name"] = "Unknown"
+	if "name" not in final_metadata:
+		final_metadata["name"] = "Unknown"
 
-		if "description" not in final_metadata:
-			final_metadata["description"] = final_metadata["name"]
+	if "description" not in final_metadata:
+		final_metadata["description"] = final_metadata["name"]
 
-		if "attribution" not in final_metadata:
-			final_metadata["attribution"] = "<b>Viettel HighTech</b>"
+	if "attribution" not in final_metadata:
+		final_metadata["attribution"] = "<b>Viettel HighTech</b>"
 
-		if "version" not in final_metadata:
-			final_metadata["version"] = "1.0.0"
+	if "version" not in final_metadata:
+		final_metadata["version"] = "1.0.0"
 
-		if "type" not in final_metadata:
-			final_metadata["type"] = "overlay"
+	if "type" not in final_metadata:
+		final_metadata["type"] = "overlay"
 
-		if "format" not in final_metadata:
-			final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
+	if "format" not in final_metadata:
+		final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
 
-		if "minzoom" not in final_metadata:
-			if merge_info and merge_info["minzoom"] is not None:
-				final_metadata["minzoom"] = merge_info["minzoom"]
-			else:
-				final_metadata["minzoom"] = get_mbtiles_zoom_level_from_tiles(cur, True)
+	if "minzoom" not in final_metadata:
+		if merge_info and merge_info["minzoom"] is not None:
+			final_metadata["minzoom"] = merge_info["minzoom"]
+		else:
+			final_metadata["minzoom"] = get_mbtiles_zoom_level_from_tiles(cur, True)
 
-		if "maxzoom" not in final_metadata:
-			if merge_info and merge_info["maxzoom"] is not None:
-				final_metadata["maxzoom"] = merge_info["maxzoom"]
-			else:
-				final_metadata["maxzoom"] = get_mbtiles_zoom_level_from_tiles(cur, False)
+	if "maxzoom" not in final_metadata:
+		if merge_info and merge_info["maxzoom"] is not None:
+			final_metadata["maxzoom"] = merge_info["maxzoom"]
+		else:
+			final_metadata["maxzoom"] = get_mbtiles_zoom_level_from_tiles(cur, False)
 
-		if "bounds" not in final_metadata:
-			if merge_info and merge_info["bbox"] is not None:
-				bbox = merge_info["bbox"]
-			else:
-				bbox = get_mbtiles_bbox_from_tiles(cur, "tms")
+	if "bounds" not in final_metadata:
+		if merge_info and merge_info["bbox"] is not None:
+			bbox = merge_info["bbox"]
+		else:
+			bbox = get_mbtiles_bbox_from_tiles(cur, "tms")
 
-			final_metadata["bounds"] = ",".join(str(x) for x in bbox)
+		final_metadata["bounds"] = ",".join(str(x) for x in bbox)
 
-		if "center" not in final_metadata:
-			final_metadata["center"] = ','.join(str(x) for x in get_mbtiles_center_from_bbox_and_zoom(bbox, int(final_metadata["minzoom"]), int(final_metadata["maxzoom"])))
+	if "center" not in final_metadata:
+		final_metadata["center"] = ','.join(str(x) for x in get_mbtiles_center_from_bbox_and_zoom(bbox, int(final_metadata["minzoom"]), int(final_metadata["maxzoom"])))
 
-		insert_query = "INSERT INTO metadata (name, value) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value;"
+	insert_query = "INSERT INTO metadata (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value;"
 
-		conn.execute("BEGIN;")
+	conn.execute("BEGIN;")
 
-		for key, value in final_metadata.items():
-			cur.execute(insert_query, (key, value))
+	for key, value in final_metadata.items():
+		cur.execute(insert_query, (key, value))
 
-		conn.execute("COMMIT;")
+	conn.execute("COMMIT;")
 
 
 if __name__ == "__main__":
@@ -405,6 +404,7 @@ if __name__ == "__main__":
 	parser.add_argument("-e", "--extra-info", required=False, action="store_true", help="Create extra info")
 	parser.add_argument("-mj", "--metadata-json", required=False, type=str, help="Metadata JSON string to update metadata table")
 	parser.add_argument("-ms", "--merge-strategy", required=False, choices=["overwrite", "keep", "merge"], default="overwrite", help="Merge strategy")
+	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output MBTiles")
 
 	args = parser.parse_args()
 
