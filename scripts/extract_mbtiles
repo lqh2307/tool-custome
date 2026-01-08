@@ -205,7 +205,7 @@ def ensure_schema(cur, metadata_index, tiles_index, extra_info):
 		conn.create_function("MD5", 1, lambda blob: hashlib.md5(blob).hexdigest())
 
 
-def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
+def merge_tiles(conn, cur, inputs, merge_strategy, extra_info, batch_size):
 	created = int(time.time() * 1000)
 
 	final_bbox = None
@@ -280,7 +280,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 		if select_query:
 			if format == "png" or format == "webp":
 				while True:
-					cur.execute(select_query, (last_rowid, args.batch_size))
+					cur.execute(select_query, (last_rowid, batch_size))
 					rows = cur.fetchall()
 					if not rows:
 						break
@@ -329,6 +329,9 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info):
 def update_metadata(conn, cur, metadata_json, merge_info):
 	final_metadata = {}
 
+	if merge_info is None:
+		merge_info = {}
+
 	if metadata_json:
 		try:
 			user_meta = json.loads(metadata_json)
@@ -348,59 +351,66 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 
 	if "name" not in final_metadata:
 		if "name" in metadata:
-			final_metadata["name"] = metadata["name"]
+			final_metadata["name"] = metadata.get("name")
 		else:
 			final_metadata["name"] = "Unknown"
 
 	if "description" not in final_metadata:
 		if "description" in metadata:
-			final_metadata["description"] = metadata["description"]
+			final_metadata["description"] = metadata.get("description")
 		else:
 			final_metadata["description"] = final_metadata["name"]
 
 	if "attribution" not in final_metadata:
 		if "attribution" in metadata:
-			final_metadata["attribution"] = metadata["attribution"]
+			final_metadata["attribution"] = metadata.get("attribution")
 		else:
 			final_metadata["attribution"] = "<b>Viettel HighTech</b>"
 
 	if "version" not in final_metadata:
 		if "version" in metadata:
-			final_metadata["version"] = metadata["version"]
+			final_metadata["version"] = metadata.get("version")
 		else:
 			final_metadata["version"] = "1.0.0"
 
 	if "type" not in final_metadata:
 		if "type" in metadata:
-			final_metadata["type"] = metadata["type"]
+			final_metadata["type"] = metadata.get("type")
 		else:
 			final_metadata["type"] = "overlay"
 
 	if "format" not in final_metadata:
 		if "format" in metadata:
-			final_metadata["format"] = metadata["format"]
+			final_metadata["format"] = metadata.get("format")
 		else:
 			final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
 
 	if "minzoom" not in final_metadata:
-		if merge_info and merge_info["minzoom"] is not None:
-			final_metadata["minzoom"] = merge_info["minzoom"]
+		if merge_info.get("minzoom") is not None:
+			final_metadata["minzoom"] = merge_info.get("minzoom")
 		else:
 			final_metadata["minzoom"] = get_mbtiles_zoom_level_from_tiles(cur, True)
 
 	if "maxzoom" not in final_metadata:
-		if merge_info and merge_info["maxzoom"] is not None:
-			final_metadata["maxzoom"] = merge_info["maxzoom"]
+		if merge_info.get("maxzoom") is not None:
+			final_metadata["maxzoom"] = merge_info.get("maxzoom")
 		else:
 			final_metadata["maxzoom"] = get_mbtiles_zoom_level_from_tiles(cur, False)
 
 	if "bounds" not in final_metadata:
-		if merge_info and merge_info["bbox"] is not None:
+		if merge_info.get("bbox") is not None:
 			bbox = merge_info["bbox"]
 		else:
 			bbox = get_mbtiles_bbox_from_tiles(cur, "tms")
 
 		final_metadata["bounds"] = ",".join(str(x) for x in bbox)
+	else:
+		parts = merge_info["bounds"].split(",")
+
+		if len(parts) != 4:
+			raise ValueError("Invalid bounds format")
+
+		bbox = [float(x) for x in parts]
 
 	if "center" not in final_metadata:
 		final_metadata["center"] = ','.join(str(x) for x in get_mbtiles_center_from_bbox_and_zoom(bbox, int(final_metadata["minzoom"]), int(final_metadata["maxzoom"])))
@@ -411,6 +421,27 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 
 	for key, value in final_metadata.items():
 		cur.execute(insert_query, (key, value))
+
+	conn.execute("COMMIT;")
+
+
+def update_hash_and_created(conn, cur, batch_size):
+	created = int(time.time() * 1000)
+
+	select_query = "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles WHERE hash IS NULL LIMIT ?;"
+	update_query = "UPDATE tiles SET hash = ?, created = ? WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?;"
+
+	conn.execute("BEGIN;")
+	
+	while True:
+		cur.execute(select_query, (batch_size,))
+
+		rows = cur.fetchall()
+		if not rows:
+			break
+
+		for z, x, y, tile_data in rows:
+			cur.execute(update_query, (hashlib.md5(tile_data).hexdigest(), created, z, x, y))
 
 	conn.execute("COMMIT;")
 
@@ -452,10 +483,15 @@ if __name__ == "__main__":
 
 	ensure_schema(cur, args.metadata_index, args.tiles_index, args.extra_info)
 
+	merge_info = None
 	if args.inputs:
 		LOGGER.info(f"Merge MBTiles {args.output}...")
 
-		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.extra_info)
+		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.extra_info, args.batch_size)
+	else:
+		LOGGER.info(f"Update MBTiles hash and created {args.output}...")
+
+		update_hash_and_created(conn, cur, args.batch_size)
 
 	LOGGER.info(f"Update MBTiles metadata {args.output}...")
 
