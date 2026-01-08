@@ -329,8 +329,13 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info, batch_size):
 def update_metadata(conn, cur, metadata_json, merge_info):
 	final_metadata = {}
 
-	if merge_info is None:
-		merge_info = {}
+	cur.execute("SELECT name, value FROM metadata;")
+	rows = cur.fetchall()
+	if rows:
+		final_metadata.update({ row[0]: row[1] for row in rows })
+
+	if merge_info is not None:
+		final_metadata.update(merge_info)
 
 	if metadata_json:
 		try:
@@ -342,70 +347,36 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 		except json.JSONDecodeError as e:
 			raise ValueError(f"Invalid JSON metadata: {e}")
 
-	cur.execute("SELECT name, value FROM metadata;")
-	rows = cur.fetchall()
-	if rows:
-		metadata = { row[0]: row[1] for row in rows }
-	else:
-		metadata = {}
-
 	if "name" not in final_metadata:
-		if "name" in metadata:
-			final_metadata["name"] = metadata.get("name")
-		else:
-			final_metadata["name"] = "Unknown"
+		final_metadata["name"] = "Unknown"
 
 	if "description" not in final_metadata:
-		if "description" in metadata:
-			final_metadata["description"] = metadata.get("description")
-		else:
-			final_metadata["description"] = final_metadata["name"]
+		final_metadata["description"] = final_metadata["name"]
 
 	if "attribution" not in final_metadata:
-		if "attribution" in metadata:
-			final_metadata["attribution"] = metadata.get("attribution")
-		else:
-			final_metadata["attribution"] = "<b>Viettel HighTech</b>"
+		final_metadata["attribution"] = "<b>Viettel HighTech</b>"
 
 	if "version" not in final_metadata:
-		if "version" in metadata:
-			final_metadata["version"] = metadata.get("version")
-		else:
-			final_metadata["version"] = "1.0.0"
+		final_metadata["version"] = "1.0.0"
 
 	if "type" not in final_metadata:
-		if "type" in metadata:
-			final_metadata["type"] = metadata.get("type")
-		else:
-			final_metadata["type"] = "overlay"
+		final_metadata["type"] = "overlay"
 
 	if "format" not in final_metadata:
-		if "format" in metadata:
-			final_metadata["format"] = metadata.get("format")
-		else:
-			final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
+		final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
 
 	if "minzoom" not in final_metadata:
-		if merge_info.get("minzoom") is not None:
-			final_metadata["minzoom"] = merge_info.get("minzoom")
-		else:
-			final_metadata["minzoom"] = get_mbtiles_zoom_level_from_tiles(cur, True)
+		final_metadata["minzoom"] = get_mbtiles_zoom_level_from_tiles(cur, True)
 
 	if "maxzoom" not in final_metadata:
-		if merge_info.get("maxzoom") is not None:
-			final_metadata["maxzoom"] = merge_info.get("maxzoom")
-		else:
-			final_metadata["maxzoom"] = get_mbtiles_zoom_level_from_tiles(cur, False)
+		final_metadata["maxzoom"] = get_mbtiles_zoom_level_from_tiles(cur, False)
 
 	if "bounds" not in final_metadata:
-		if merge_info.get("bbox") is not None:
-			bbox = merge_info["bbox"]
-		else:
-			bbox = get_mbtiles_bbox_from_tiles(cur, "tms")
+		bbox = get_mbtiles_bbox_from_tiles(cur, "tms")
 
 		final_metadata["bounds"] = ",".join(str(x) for x in bbox)
 	else:
-		parts = merge_info["bounds"].split(",")
+		parts = final_metadata["bounds"].split(",")
 
 		if len(parts) != 4:
 			raise ValueError("Invalid bounds format")
