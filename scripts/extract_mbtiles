@@ -399,20 +399,24 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 def update_hash_and_created(conn, cur, batch_size):
 	created = int(time.time() * 1000)
 
-	select_query = "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles WHERE hash IS NULL LIMIT ?;"
+	select_query = "SELECT rowid, zoom_level, tile_column, tile_row, tile_data FROM tiles WHERE rowid > ? ORDER BY rowid LIMIT ?;"
 	update_query = "UPDATE tiles SET hash = ?, created = ? WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?;"
 
+	last_rowid = 0
+
 	conn.execute("BEGIN;")
-	
+
 	while True:
-		cur.execute(select_query, (batch_size,))
+		cur.execute(select_query, (last_rowid, batch_size))
 
 		rows = cur.fetchall()
 		if not rows:
 			break
 
-		for z, x, y, tile_data in rows:
+		for rowid, z, x, y, tile_data in rows:
 			cur.execute(update_query, (hashlib.md5(tile_data).hexdigest(), created, z, x, y))
+
+			last_rowid = rowid
 
 	conn.execute("COMMIT;")
 
