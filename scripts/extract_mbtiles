@@ -216,7 +216,7 @@ def create_unique_indexes(cur, metadata_index, tiles_index):
 		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
 
 
-def merge_tiles(conn, cur, inputs, merge_strategy, batch):
+def merge_tiles(conn, cur, inputs, merge_strategy, compression, batch):
 	final_bbox = None
 	final_minzoom = None
 	final_maxzoom = None
@@ -285,20 +285,19 @@ def merge_tiles(conn, cur, inputs, merge_strategy, batch):
 					if not rows:
 						break
 
+					args = {
+						"format": format.upper(),
+						"quality": 100,
+					}
+
+					if compression:
+						args["compress_level"] = 9
+
 					for rowid, z, x, y, new_data, old_data in rows:
 						if old_data:
 							out = io.BytesIO()
 
-							Image.alpha_composite(
-								Image.open(io.BytesIO(old_data)),
-								Image.open(io.BytesIO(new_data)),
-							).save(
-								out,
-								format=format.upper(),
-								optimize=True,
-								compress_level=9,
-								quality=100,
-							)
+							Image.alpha_composite(Image.open(io.BytesIO(old_data)), Image.open(io.BytesIO(new_data))).save(out, **args)
 
 							merged = out.getvalue()
 						else:
@@ -489,7 +488,7 @@ if __name__ == "__main__":
 	if args.inputs:
 		LOGGER.info(f"Merge MBTiles {args.output}...")
 
-		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.batch)
+		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.compression, args.batch)
 
 	if args.overview:
 		LOGGER.info(f"Create overview MBTiles {args.output}...")
