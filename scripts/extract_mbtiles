@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from PIL import Image
+import subprocess
 import argparse
 import sqlite3
 import hashlib
@@ -170,39 +171,43 @@ def get_mbtiles_format_from_tiles(cur):
 		return "pbf"
 
 
-def has_unique_index(cur, table_name, column_names):
-	cur.execute(f"PRAGMA index_list ({table_name});")
-	indexes = cur.fetchall()
-	if not indexes:
-		return False
+def connect(file_path):
+	conn = sqlite3.connect(file_path)
+	cur = conn.cursor()
 
-	for _, index_name, is_unique, *_ in indexes:
-		if not is_unique:
-			continue
-
-		cur.execute(f"PRAGMA index_info ({index_name});")
-		columns = cur.fetchall()
-		if not columns:
-			continue
-
-		index_cols = [col[2] for col in columns]
-		if index_cols == column_names:
-			return True
-
-	return False
-
-
-def optimize_connect(cur):
 	cur.execute("PRAGMA journal_mode = OFF;")
 	cur.execute("PRAGMA synchronous = OFF;")
 	cur.execute("PRAGMA foreign_keys = OFF;")
 	cur.execute("PRAGMA encoding = 'UTF-8';")
 	cur.execute("PRAGMA page_size = 65536;")
 
-
-def ensure_schema(cur, metadata_index, tiles_index, extra_info):
 	cur.execute("CREATE TABLE IF NOT EXISTS metadata (name TEXT NOT NULL, value TEXT NOT NULL, UNIQUE (name));")
 	cur.execute("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL, tile_row INTEGER NOT NULL, tile_data BLOB NOT NULL, UNIQUE (zoom_level, tile_column, tile_row));")
+
+	return conn, cur
+
+
+def create_unique_indexes(cur, metadata_index, tiles_index):
+	def has_unique_index(cur, table_name, column_names):
+		cur.execute(f"PRAGMA index_list ({table_name});")
+		indexes = cur.fetchall()
+		if not indexes:
+			return False
+
+		for _, index_name, is_unique, *_ in indexes:
+			if not is_unique:
+				continue
+
+			cur.execute(f"PRAGMA index_info ({index_name});")
+			columns = cur.fetchall()
+			if not columns:
+				continue
+
+			index_cols = [col[2] for col in columns]
+			if index_cols == column_names:
+				return True
+
+		return False
 
 	if metadata_index and not has_unique_index(cur, "metadata", ["name"]):
 		cur.execute("CREATE UNIQUE INDEX metadata_index ON metadata (name);")
@@ -210,24 +215,8 @@ def ensure_schema(cur, metadata_index, tiles_index, extra_info):
 	if tiles_index and not has_unique_index(cur, "tiles", ["zoom_level", "tile_column", "tile_row"]):
 		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
 
-	if extra_info:
-		cur.execute("PRAGMA table_info (tiles);")
-		rows = cur.fetchall()
-		if rows:
-			cols = { row[1] for row in rows }
-		else:
-			cols = {}
 
-		if "hash" not in cols:
-			cur.execute("ALTER TABLE tiles ADD COLUMN hash TEXT;")
-
-		if "created" not in cols:
-			cur.execute("ALTER TABLE tiles ADD COLUMN created BIGINT;")
-
-		conn.create_function("MD5", 1, lambda blob: hashlib.md5(blob).hexdigest())
-
-
-def merge_tiles(conn, cur, inputs, merge_strategy, extra_info, batch_size):
+def merge_tiles(conn, cur, inputs, merge_strategy, batch_size):
 	created = int(time.time() * 1000)
 
 	final_bbox = None
@@ -237,21 +226,12 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info, batch_size):
 	select_query = None
 
 	if merge_strategy == "overwrite":
-		if extra_info:
-			insert_query = f"INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data, hash, created) SELECT zoom_level, tile_column, tile_row, tile_data, MD5 (tile_data), {created} FROM src.tiles;"
-		else:
-			insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) SELECT zoom_level, tile_column, tile_row, tile_data FROM src.tiles;"
+		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) SELECT zoom_level, tile_column, tile_row, tile_data FROM src.tiles;"
 	elif merge_strategy == "keep":
-		if extra_info:
-			insert_query = f"INSERT OR IGNORE INTO tiles (zoom_level, tile_column, tile_row, tile_data, hash, created) SELECT zoom_level, tile_column, tile_row, tile_data, MD5 (tile_data), {created} FROM src.tiles;"
-		else:
-			insert_query = "INSERT OR IGNORE INTO tiles (zoom_level, tile_column, tile_row, tile_data) SELECT zoom_level, tile_column, tile_row, tile_data FROM src.tiles;"
+		insert_query = "INSERT OR IGNORE INTO tiles (zoom_level, tile_column, tile_row, tile_data) SELECT zoom_level, tile_column, tile_row, tile_data FROM src.tiles;"
 	else:
-		if extra_info:
-			insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data, hash, created) VALUES (?, ?, ?, ?, ?, ?);"
-		else:
-			insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-			select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
+		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
 
 	for path in inputs:
 		LOGGER.info(f"Merging {path}...")
@@ -326,10 +306,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, extra_info, batch_size):
 						else:
 							merged = new_data
 
-						if extra_info:
-							cur.execute(insert_query, (z, x, y, merged, hashlib.md5(merged).hexdigest(), created))
-						else:
-							cur.execute(insert_query, (z, x, y, merged))
+						cur.execute(insert_query, (z, x, y, merged))
 
 						last_rowid = rowid
 			else:
@@ -418,7 +395,24 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 	conn.execute("COMMIT;")
 
 
+def create_overview(file_path):
+	subprocess.run(["gdaladdo", "-r", "lanczos", file_path], check=True)
+
+
 def update_hash_and_created(conn, cur, batch_size):
+	cur.execute("PRAGMA table_info (tiles);")
+	rows = cur.fetchall()
+	if rows:
+		cols = { row[1] for row in rows }
+
+		if "hash" not in cols:
+			cur.execute("ALTER TABLE tiles ADD COLUMN hash TEXT;")
+
+		if "created" not in cols:
+			cur.execute("ALTER TABLE tiles ADD COLUMN created BIGINT;")
+	else:
+		raise ValueError("Cannot get table info")
+
 	created = int(time.time() * 1000)
 
 	select_query = "SELECT rowid, zoom_level, tile_column, tile_row, tile_data FROM tiles WHERE rowid > ? ORDER BY rowid LIMIT ?;"
@@ -466,6 +460,7 @@ if __name__ == "__main__":
 	parser.add_argument("-mj", "--metadata-json", required=False, type=str, help="Metadata JSON string to update metadata table")
 	parser.add_argument("-ms", "--merge-strategy", required=False, choices=["overwrite", "keep", "merge"], default="overwrite", help="Merge strategy")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output MBTiles")
+	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
 
 	args = parser.parse_args()
 
@@ -473,19 +468,29 @@ if __name__ == "__main__":
 
 	t0 = time.time()
 
-	conn = sqlite3.connect(args.output)
-	cur = conn.cursor()
+	conn, cur = connect(args.output)
 
-	optimize_connect(cur)
+	if args.tiles_index or args.tiles_index:
+		LOGGER.info(f"Create indexes MBTiles {args.output}...")
 
-	ensure_schema(cur, args.metadata_index, args.tiles_index, args.extra_info)
+		create_unique_indexes(cur, args.metadata_index, args.tiles_index)
 
 	merge_info = None
 	if args.inputs:
 		LOGGER.info(f"Merge MBTiles {args.output}...")
 
-		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.extra_info, args.batch_size)
-	else:
+		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.batch_size)
+
+	if args.overview:
+		LOGGER.info(f"Create overview MBTiles {args.output}...")
+
+		conn.close()
+
+		create_overview(args.output)
+
+		conn, cur = connect(args.output)
+
+	if args.extra_info:
 		LOGGER.info(f"Update MBTiles hash and created {args.output}...")
 
 		update_hash_and_created(conn, cur, args.batch_size)
