@@ -170,6 +170,28 @@ def get_mbtiles_format_from_tiles(cur):
 		return "pbf"
 
 
+def has_unique_index(cur, table_name, column_names):
+	cur.execute(f"PRAGMA index_list ({table_name});")
+	indexes = cur.fetchall()
+	if not indexes:
+		return False
+
+	for _, index_name, is_unique, *_ in indexes:
+		if not is_unique:
+			continue
+
+		cur.execute(f"PRAGMA index_info ({index_name});")
+		columns = cur.fetchall()
+		if not columns:
+			continue
+
+		index_cols = [col[2] for col in columns]
+		if index_cols == column_names:
+			return True
+
+	return False
+
+
 def optimize_connect(cur):
 	cur.execute("PRAGMA journal_mode = OFF;")
 	cur.execute("PRAGMA synchronous = OFF;")
@@ -182,11 +204,11 @@ def ensure_schema(cur, metadata_index, tiles_index, extra_info):
 	cur.execute("CREATE TABLE IF NOT EXISTS metadata (name TEXT NOT NULL, value TEXT NOT NULL, UNIQUE (name));")
 	cur.execute("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL, tile_row INTEGER NOT NULL, tile_data BLOB NOT NULL, UNIQUE (zoom_level, tile_column, tile_row));")
 
-	if metadata_index:
-		cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS metadata_index ON metadata (name);")
+	if metadata_index and not has_unique_index(cur, "metadata", ["name"]):
+		cur.execute("CREATE UNIQUE INDEX metadata_index ON metadata (name);")
 
-	if tiles_index:
-		cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS tiles_index ON tiles (zoom_level, tile_column, tile_row);")
+	if tiles_index and not has_unique_index(cur, "tiles", ["zoom_level", "tile_column", "tile_row"]):
+		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
 
 	if extra_info:
 		cur.execute("PRAGMA table_info (tiles);")
