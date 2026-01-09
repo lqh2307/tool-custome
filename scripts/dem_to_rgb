@@ -42,13 +42,13 @@ def data_to_rgb(data, base_val, interval):
 if __name__ == "__main__":
 	if threading.current_thread() is threading.main_thread():
 		signal.signal(signal.SIGINT, lambda sig, frame: (
-			LOGGER.info('Received "SIGINT" signal. Exitting...'),
+			LOGGER.info("Received 'SIGINT' signal. Exitting..."),
 
 			sys.exit(0)
 		))
 
 		signal.signal(signal.SIGTERM, lambda sig, frame: (
-			LOGGER.info('Received "SIGTERM" signal. Exitting...'),
+			LOGGER.info("Received 'SIGTERM' signal. Exitting..."),
 
 			sys.exit(0)
 		))

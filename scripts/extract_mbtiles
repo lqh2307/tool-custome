@@ -188,7 +188,7 @@ def connect(file_path):
 
 
 def create_unique_indexes(cur, metadata_index, tiles_index):
-	def has_unique_index(cur, table_name, column_names):
+	def has_unique_index(table_name, column_names):
 		cur.execute(f"PRAGMA index_list ({table_name});")
 		indexes = cur.fetchall()
 		if not indexes:
@@ -216,9 +216,7 @@ def create_unique_indexes(cur, metadata_index, tiles_index):
 		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
 
 
-def merge_tiles(conn, cur, inputs, merge_strategy, batch_size):
-	created = int(time.time() * 1000)
-
+def merge_tiles(conn, cur, inputs, merge_strategy, batch):
 	final_bbox = None
 	final_minzoom = None
 	final_maxzoom = None
@@ -282,7 +280,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, batch_size):
 		if select_query:
 			if format == "png" or format == "webp":
 				while True:
-					cur.execute(select_query, (last_rowid, batch_size))
+					cur.execute(select_query, (last_rowid, batch))
 					rows = cur.fetchall()
 					if not rows:
 						break
@@ -395,23 +393,34 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 	conn.execute("COMMIT;")
 
 
-def create_overview(file_path):
-	subprocess.run(["gdaladdo", "-r", "lanczos", file_path], check=True)
+def create_overview(file_path, resampling):
+	opts = ["gdaladdo"]
+
+	if resampling:
+		opts = opts + ["-r", resampling]
+
+	opts.append(file_path)
+
+	subprocess.run(opts, check=True)
 
 
-def update_hash_and_created(conn, cur, batch_size):
-	cur.execute("PRAGMA table_info (tiles);")
-	rows = cur.fetchall()
-	if rows:
-		cols = { row[1] for row in rows }
+def update_hash_and_created(conn, cur, batch):
+	def has_column(column):
+		cur.execute("PRAGMA table_info (tiles);")
+		rows = cur.fetchall()
+		if rows:
+			if column in { row[1] for row in rows }:
+				return True
+			else:
+				return False
+		else:
+			raise ValueError("Cannot get 'tiles' table info")
 
-		if "hash" not in cols:
-			cur.execute("ALTER TABLE tiles ADD COLUMN hash TEXT;")
+	if not has_column("hash"):
+		cur.execute("ALTER TABLE tiles ADD COLUMN hash TEXT;")
 
-		if "created" not in cols:
-			cur.execute("ALTER TABLE tiles ADD COLUMN created BIGINT;")
-	else:
-		raise ValueError("Cannot get table info")
+	if not has_column("created"):
+		cur.execute("ALTER TABLE tiles ADD COLUMN created BIGINT;")
 
 	created = int(time.time() * 1000)
 
@@ -423,7 +432,7 @@ def update_hash_and_created(conn, cur, batch_size):
 	conn.execute("BEGIN;")
 
 	while True:
-		cur.execute(select_query, (last_rowid, batch_size))
+		cur.execute(select_query, (last_rowid, batch))
 
 		rows = cur.fetchall()
 		if not rows:
@@ -439,13 +448,13 @@ def update_hash_and_created(conn, cur, batch_size):
 
 if __name__ == "__main__":
 	signal.signal(signal.SIGINT, lambda sig, frame: (
-		LOGGER.info('Received "SIGINT" signal. Exitting...'),
+		LOGGER.info("Received 'SIGINT' signal. Exitting..."),
 
 		sys.exit(0)
 	))
 
 	signal.signal(signal.SIGTERM, lambda sig, frame: (
-		LOGGER.info('Received "SIGTERM" signal. Exitting...'),
+		LOGGER.info("Received 'SIGTERM' signal. Exitting..."),
 
 		sys.exit(0)
 	))
@@ -453,14 +462,15 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Extract MBTiles")
 	parser.add_argument("-o", "--output", required=True, type=Path, help="Output MBTiles")
 	parser.add_argument("-i", "--inputs", required=False, nargs="+", type=Path, help="Input MBTileses")
-	parser.add_argument("-b", "--batch-size", required=False, type=int, default=1000, help="Batch size")
+	parser.add_argument("-b", "--batch", required=False, type=int, default=10000, help="Batch size")
 	parser.add_argument("-mi", "--metadata-index", required=False, action="store_true", help="Create metadata unique index")
 	parser.add_argument("-ti", "--tiles-index", required=False, action="store_true", help="Create tiles unique index")
-	parser.add_argument("-e", "--extra-info", required=False, action="store_true", help="Create extra info")
+	parser.add_argument("-e", "--extra-info", required=False, action="store_true", help="Create extra info in tiles table (hash and created columns)")
 	parser.add_argument("-mj", "--metadata-json", required=False, type=str, help="Metadata JSON string to update metadata table")
 	parser.add_argument("-ms", "--merge-strategy", required=False, choices=["overwrite", "keep", "merge"], default="overwrite", help="Merge strategy")
-	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output MBTiles")
+	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression tile for output MBTiles")
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
+	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "average", "rms", "gauss", "bilinear", "cubic", "cubicspline", "lanczos", "average_magphase", "mode"], default="lanczos", help="Resampling method to create overview")
 
 	args = parser.parse_args()
 
@@ -479,21 +489,21 @@ if __name__ == "__main__":
 	if args.inputs:
 		LOGGER.info(f"Merge MBTiles {args.output}...")
 
-		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.batch_size)
+		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.batch)
 
 	if args.overview:
 		LOGGER.info(f"Create overview MBTiles {args.output}...")
 
 		conn.close()
 
-		create_overview(args.output)
+		create_overview(args.output, args.resampling)
 
 		conn, cur = connect(args.output)
 
 	if args.extra_info:
 		LOGGER.info(f"Update MBTiles hash and created {args.output}...")
 
-		update_hash_and_created(conn, cur, args.batch_size)
+		update_hash_and_created(conn, cur, args.batch)
 
 	LOGGER.info(f"Update MBTiles metadata {args.output}...")
 
