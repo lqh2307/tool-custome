@@ -361,30 +361,44 @@ def update_metadata(conn, cur, metadata_json, merge_bounds):
 		else:
 			final_metadata["bounds"] = encode_bounds(merge_bounds)
 
+	user_metadata = {}
 	if metadata_json:
 		try:
-			user_meta = json.loads(metadata_json)
-			if not isinstance(user_meta, dict):
+			user_metadata = json.loads(metadata_json)
+			if not isinstance(user_metadata, dict):
 				raise ValueError("Metadata JSON must be an object")
-
-			final_metadata.update(user_meta)
 		except json.JSONDecodeError as e:
 			raise ValueError(f"Invalid JSON metadata: {e}")
 
 	if "name" not in final_metadata:
-		final_metadata["name"] = "Unknown"
+		if "name" in user_metadata:
+			final_metadata["name"] = user_metadata["name"]
+		else:
+			final_metadata["name"] = "Unknown"
 
 	if "description" not in final_metadata:
-		final_metadata["description"] = final_metadata["name"]
+		if "description" in user_metadata:
+			final_metadata["description"] = user_metadata["description"]
+		else:
+			final_metadata["description"] = final_metadata["name"]
 
 	if "attribution" not in final_metadata:
-		final_metadata["attribution"] = "<b>Viettel HighTech</b>"
+		if "attribution" in user_metadata:
+			final_metadata["attribution"] = user_metadata["attribution"]
+		else:
+			final_metadata["attribution"] = "<b>Viettel HighTech</b>"
 
 	if "version" not in final_metadata:
-		final_metadata["version"] = "1.0.0"
+		if "version" in user_metadata:
+			final_metadata["version"] = user_metadata["version"]
+		else:
+			final_metadata["version"] = "1.0.0"
 
 	if "type" not in final_metadata:
-		final_metadata["type"] = "overlay"
+		if "type" in user_metadata:
+			final_metadata["type"] = user_metadata["type"]
+		else:
+			final_metadata["type"] = "overlay"
 
 	final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
 	final_metadata["minzoom"] = str(get_mbtiles_zoom_level_from_tiles(cur, True))
