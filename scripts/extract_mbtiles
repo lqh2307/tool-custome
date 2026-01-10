@@ -14,6 +14,7 @@ import math
 import json
 import sys
 import io
+import os
 
 
 # ========= LOGS =========
@@ -27,6 +28,9 @@ LOGGER.setLevel(logging.INFO)
 SPHERICAL_RADIUS = 6378137.0
 MAX_LON = 180
 MAX_LAT = 85.051129
+
+
+os.environ["GDAL_NUM_THREADS"] = "ALL_CPUS"
 
 
 def limit_value(value, min = None, max = None):
@@ -231,7 +235,7 @@ def composite_worker(args):
 
 
 def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
-	final_bbox = None
+	final_bounds = None
 	final_minzoom = None
 	final_maxzoom = None
 	insert_query = None
@@ -278,9 +282,9 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 		else:
 			maxzoom = get_mbtiles_zoom_level_from_tiles(src_cur, False)
 
-		final_bbox = get_cover_bbox(final_bbox, bbox)
-		final_minzoom = minzoom if final_minzoom is None else min(final_minzoom, minzoom)
-		final_maxzoom = maxzoom if final_maxzoom is None else max(final_maxzoom, maxzoom)
+		final_bounds = get_cover_bbox(final_bounds, bbox)
+		final_minzoom = limit_value(minzoom, None, final_minzoom)
+		final_maxzoom = limit_value(maxzoom, final_maxzoom, None)
 
 		last_rowid = 0
 		format = get_mbtiles_format_from_tiles(src_cur)
@@ -350,9 +354,9 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 		cur.execute("DETACH DATABASE src;")
 
 	return {
-		"bbox": ",".join(str(x) for x in final_bbox),
+		"bounds": ",".join(str(x) for x in final_bounds),
 		"minzoom": final_minzoom,
-		"maxzoom": final_maxzoom
+		"maxzoom": final_maxzoom,
 	}
 
 
@@ -365,7 +369,11 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 		final_metadata.update({ row[0]: row[1] for row in rows })
 
 	if merge_info is not None:
-		final_metadata.update(merge_info)
+		final_metadata.update({
+			"bounds": get_cover_bbox(final_metadata["bounds"], merge_info["bounds"]) if "bounds" in final_metadata else merge_info["bounds"],
+			"minzoom": math.min(final_metadata["minzoom"], merge_info["minzoom"]) if "minzoom" in final_metadata else merge_info["minzoom"],
+			"maxzoom": math.max(final_metadata["maxzoom"], merge_info["maxzoom"]) if "maxzoom" in final_metadata else merge_info["maxzoom"],
+		})
 
 	if metadata_json:
 		try:
@@ -427,7 +435,7 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 
 
 def create_overview(file_path, resampling):
-	opts = ["GDAL_NUM_THREADS=ALL_CPUS", "gdaladdo"]
+	opts = ["gdaladdo"]
 
 	if resampling:
 		opts = opts + ["-r", resampling]
