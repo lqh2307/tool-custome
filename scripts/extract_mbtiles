@@ -279,8 +279,8 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 			maxzoom = get_mbtiles_zoom_level_from_tiles(src_cur, False)
 
 		final_bbox = get_cover_bbox(final_bbox, bbox)
-		final_minzoom = limit_value(minzoom, None, final_minzoom)
-		final_maxzoom = limit_value(maxzoom, final_minzoom, None)
+		final_minzoom = minzoom if final_minzoom is None else min(final_minzoom, minzoom)
+		final_maxzoom = maxzoom if final_maxzoom is None else max(final_maxzoom, maxzoom)
 
 		last_rowid = 0
 		format = get_mbtiles_format_from_tiles(src_cur)
@@ -427,7 +427,7 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 
 
 def create_overview(file_path, resampling):
-	opts = ["gdaladdo"]
+	opts = ["GDAL_NUM_THREADS=ALL_CPUS", "gdaladdo"]
 
 	if resampling:
 		opts = opts + ["-r", resampling]
