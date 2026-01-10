@@ -290,8 +290,16 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 			maxzoom = get_mbtiles_zoom_level_from_tiles(src_cur, False)
 
 		final_bounds = get_cover_bbox(final_bounds, bbox)
-		final_minzoom = limit_value(minzoom, None, final_minzoom)
-		final_maxzoom = limit_value(maxzoom, final_maxzoom, None)
+
+		if final_minzoom is None:
+			final_minzoom = minzoom
+		else:
+			final_minzoom = min(final_minzoom, minzoom)
+
+		if final_maxzoom is None:
+			final_maxzoom = maxzoom
+		else:
+			final_maxzoom = max(final_maxzoom, maxzoom)
 
 		last_rowid = 0
 		format = get_mbtiles_format_from_tiles(src_cur)
@@ -533,7 +541,7 @@ if __name__ == "__main__":
 
 	conn, cur = connect(args.output)
 
-	if args.tiles_index or args.tiles_index:
+	if args.metadata_index or args.tiles_index:
 		LOGGER.info(f"Create indexes MBTiles {args.output}...")
 
 		create_unique_indexes(cur, args.metadata_index, args.tiles_index)
