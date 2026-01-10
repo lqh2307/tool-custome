@@ -32,6 +32,18 @@ MAX_LAT = 85.051129
 
 os.environ["GDAL_NUM_THREADS"] = "ALL_CPUS"
 
+def parse_bounds(bounds):
+	parts = bounds.split(",")
+
+	if len(parts) != 4:
+		raise ValueError("Invalid bounds format")
+
+	return [float(x) for x in parts]
+
+
+def encode_bounds(bounds):
+	return ",".join(str(x) for x in bounds)
+
 
 def limit_value(value, min = None, max = None):
 	if min is not None and value < min:
@@ -263,12 +275,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 			src_metadata = {}
 
 		if "bounds" in src_metadata:
-			parts = src_metadata["bounds"].split(",")
-
-			if len(parts) != 4:
-				raise ValueError("Invalid bounds format")
-
-			bbox = [float(x) for x in parts]
+			bbox = parse_bounds(src_metadata["bounds"])
 		else:
 			bbox = get_mbtiles_bbox_from_tiles(src_cur, "tms")
 
@@ -354,7 +361,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 		cur.execute("DETACH DATABASE src;")
 
 	return {
-		"bounds": ",".join(str(x) for x in final_bounds),
+		"bounds": final_bounds,
 		"minzoom": final_minzoom,
 		"maxzoom": final_maxzoom,
 	}
@@ -369,11 +376,20 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 		final_metadata.update({ row[0]: row[1] for row in rows })
 
 	if merge_info is not None:
-		final_metadata.update({
-			"bounds": get_cover_bbox(final_metadata["bounds"], merge_info["bounds"]) if "bounds" in final_metadata else merge_info["bounds"],
-			"minzoom": math.min(final_metadata["minzoom"], merge_info["minzoom"]) if "minzoom" in final_metadata else merge_info["minzoom"],
-			"maxzoom": math.max(final_metadata["maxzoom"], merge_info["maxzoom"]) if "maxzoom" in final_metadata else merge_info["maxzoom"],
-		})
+		if "bounds" in final_metadata:
+			final_metadata["bounds"] = encode_bounds(get_cover_bbox(parse_bounds(final_metadata["bounds"]), merge_info["bounds"]))
+		else:
+			final_metadata["bounds"] = encode_bounds(merge_info["bounds"])
+
+		if "minzoom" in final_metadata:
+			final_metadata["minzoom"] = min(final_metadata["minzoom"], merge_info["minzoom"])
+		else:
+			final_metadata["minzoom"] = str(merge_info["minzoom"])
+
+		if "maxzoom" in final_metadata:
+			final_metadata["maxzoom"] = max(final_metadata["maxzoom"], merge_info["maxzoom"])
+		else:
+			final_metadata["maxzoom"] = str(merge_info["maxzoom"])
 
 	if metadata_json:
 		try:
@@ -404,25 +420,20 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 		final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
 
 	if "minzoom" not in final_metadata:
-		final_metadata["minzoom"] = get_mbtiles_zoom_level_from_tiles(cur, True)
+		final_metadata["minzoom"] = str(get_mbtiles_zoom_level_from_tiles(cur, True))
 
 	if "maxzoom" not in final_metadata:
-		final_metadata["maxzoom"] = get_mbtiles_zoom_level_from_tiles(cur, False)
+		final_metadata["maxzoom"] = str(get_mbtiles_zoom_level_from_tiles(cur, False))
 
 	if "bounds" not in final_metadata:
 		bbox = get_mbtiles_bbox_from_tiles(cur, "tms")
 
-		final_metadata["bounds"] = ",".join(str(x) for x in bbox)
+		final_metadata["bounds"] = encode_bounds(bbox)
 	else:
-		parts = final_metadata["bounds"].split(",")
-
-		if len(parts) != 4:
-			raise ValueError("Invalid bounds format")
-
-		bbox = [float(x) for x in parts]
+		bbox = parse_bounds(parts)
 
 	if "center" not in final_metadata:
-		final_metadata["center"] = ','.join(str(x) for x in get_mbtiles_center_from_bbox_and_zoom(bbox, int(final_metadata["minzoom"]), int(final_metadata["maxzoom"])))
+		final_metadata["center"] = ",".join(str(x) for x in get_mbtiles_center_from_bbox_and_zoom(bbox, int(final_metadata["minzoom"]), int(final_metadata["maxzoom"])))
 
 	insert_query = "INSERT INTO metadata (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value;"
 
