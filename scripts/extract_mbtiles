@@ -430,7 +430,7 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 
 		final_metadata["bounds"] = encode_bounds(bbox)
 	else:
-		bbox = parse_bounds(parts)
+		bbox = parse_bounds(final_metadata["bounds"])
 
 	if "center" not in final_metadata:
 		final_metadata["center"] = ",".join(str(x) for x in get_mbtiles_center_from_bbox_and_zoom(bbox, int(final_metadata["minzoom"]), int(final_metadata["maxzoom"])))
