@@ -382,12 +382,12 @@ def update_metadata(conn, cur, metadata_json, merge_info):
 			final_metadata["bounds"] = encode_bounds(merge_info["bounds"])
 
 		if "minzoom" in final_metadata:
-			final_metadata["minzoom"] = min(final_metadata["minzoom"], merge_info["minzoom"])
+			final_metadata["minzoom"] = str(min(int(final_metadata["minzoom"]), merge_info["minzoom"]))
 		else:
 			final_metadata["minzoom"] = str(merge_info["minzoom"])
 
 		if "maxzoom" in final_metadata:
-			final_metadata["maxzoom"] = max(final_metadata["maxzoom"], merge_info["maxzoom"])
+			final_metadata["maxzoom"] = str(max(int(final_metadata["maxzoom"]), merge_info["maxzoom"]))
 		else:
 			final_metadata["maxzoom"] = str(merge_info["maxzoom"])
 
