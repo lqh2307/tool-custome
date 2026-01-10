@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from multiprocessing import Pool
 from pathlib import Path
 from PIL import Image
 import subprocess
@@ -209,14 +210,14 @@ def create_unique_indexes(cur, metadata_index, tiles_index):
 
 		return False
 
-	if metadata_index and not has_unique_index(cur, "metadata", ["name"]):
+	if metadata_index and not has_unique_index("metadata", ["name"]):
 		cur.execute("CREATE UNIQUE INDEX metadata_index ON metadata (name);")
 
-	if tiles_index and not has_unique_index(cur, "tiles", ["zoom_level", "tile_column", "tile_row"]):
+	if tiles_index and not has_unique_index("tiles", ["zoom_level", "tile_column", "tile_row"]):
 		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
 
 
-def merge_tiles(conn, cur, inputs, merge_strategy, compression, batch):
+def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 	final_bbox = None
 	final_minzoom = None
 	final_maxzoom = None
@@ -238,7 +239,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, batch):
 		src_cur = src_conn.cursor()
 
 		src_cur.execute("SELECT name, value FROM metadata;")
-		src_rows = cur.fetchall()
+		src_rows = src_cur.fetchall()
 		if rows:
 			src_metadata = { src_row[0]: src_row[1] for src_row in src_rows }
 		else:
@@ -279,21 +280,25 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, batch):
 
 		if select_query:
 			if format == "png" or format == "webp":
-				while True:
-					cur.execute(select_query, (last_rowid, batch))
-					rows = cur.fetchall()
-					if not rows:
-						break
+				args = {
+					"format": format.upper(),
+					"quality": 100,
+				}
 
-					args = {
-						"format": format.upper(),
-						"quality": 100,
-					}
+				if compression:
+					args["compress_level"] = 9
 
-					if compression:
-						args["compress_level"] = 9
+				workers = max(1, workers)
 
-					for rowid, z, x, y, new_data, old_data in rows:
+				# ========= SINGLE PROCESS =========
+				if workers == 1:
+					while True:
+						cur.execute(select_query, (last_rowid, batch))
+						rows = cur.fetchall()
+						if not rows:
+							break
+
+					for _, z, x, y, new_data, old_data in rows:
 						if old_data:
 							out = io.BytesIO()
 
@@ -305,7 +310,33 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, batch):
 
 						cur.execute(insert_query, (z, x, y, merged))
 
-						last_rowid = rowid
+					last_rowid = rows[-1][0]
+				# ========= MULTI PROCESS =========
+				else:
+					def composite_worker(task):
+						z, x, y, new_data, old_data = task
+
+						if old_data:
+							out = io.BytesIO()
+
+							Image.alpha_composite(Image.open(io.BytesIO(old_data)), Image.open(io.BytesIO(new_data))).save(out, **args)
+
+							return z, x, y, out.getvalue()
+						else:
+							return z, x, y, new_data
+
+					pool = Pool(workers)
+
+					while True:
+						cur.execute(select_query, (last_rowid, batch))
+						rows = cur.fetchall()
+						if not rows:
+							break
+
+						for z, x, y, merged in pool.imap_unordered(composite_worker, [(z, x, y, new_data, old_data) for _, z, x, y, new_data, old_data in rows]):
+							cur.execute(insert_query, (z, x, y, merged))
+
+						last_rowid = rows[-1][0]
 			else:
 				raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{format}'")
 		else:
@@ -461,7 +492,8 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Extract MBTiles")
 	parser.add_argument("-o", "--output", required=True, type=Path, help="Output MBTiles")
 	parser.add_argument("-i", "--inputs", required=False, nargs="+", type=Path, help="Input MBTileses")
-	parser.add_argument("-b", "--batch", required=False, type=int, default=10000, help="Batch size")
+	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
+	parser.add_argument("-b", "--batch", required=False, type=int, default=1000, help="Batch size")
 	parser.add_argument("-mi", "--metadata-index", required=False, action="store_true", help="Create metadata unique index")
 	parser.add_argument("-ti", "--tiles-index", required=False, action="store_true", help="Create tiles unique index")
 	parser.add_argument("-e", "--extra-info", required=False, action="store_true", help="Create extra info in tiles table (hash and created columns)")
@@ -469,7 +501,7 @@ if __name__ == "__main__":
 	parser.add_argument("-ms", "--merge-strategy", required=False, choices=["overwrite", "keep", "merge"], default="overwrite", help="Merge strategy")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression tile for output MBTiles")
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
-	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "average", "rms", "gauss", "bilinear", "cubic", "cubicspline", "lanczos", "average_magphase", "mode"], default="lanczos", help="Resampling method to create overview")
+	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "average", "rms", "gauss", "bilinear", "cubic", "cubicspline", "lanczos", "average_magphase", "mode"], default="nearest", help="Resampling method to create overview")
 
 	args = parser.parse_args()
 
@@ -488,7 +520,7 @@ if __name__ == "__main__":
 	if args.inputs:
 		LOGGER.info(f"Merge MBTiles {args.output}...")
 
-		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.compression, args.batch)
+		merge_info = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.compression, args.workers, args.batch)
 
 	if args.overview:
 		LOGGER.info(f"Create overview MBTiles {args.output}...")
