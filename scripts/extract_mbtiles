@@ -217,6 +217,19 @@ def create_unique_indexes(cur, metadata_index, tiles_index):
 		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
 
 
+def composite_worker(args):
+	z, x, y, new_data, old_data, save_args = args
+
+	if not old_data:
+		return z, x, y, new_data
+
+	out = io.BytesIO()
+
+	Image.alpha_composite(Image.open(io.BytesIO(old_data)), Image.open(io.BytesIO(new_data))).save(out, **save_args)
+
+	return z, x, y, out.getvalue()
+
+
 def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 	final_bbox = None
 	final_minzoom = None
@@ -240,7 +253,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 
 		src_cur.execute("SELECT name, value FROM metadata;")
 		src_rows = src_cur.fetchall()
-		if rows:
+		if src_rows:
 			src_metadata = { src_row[0]: src_row[1] for src_row in src_rows }
 		else:
 			src_metadata = {}
@@ -280,13 +293,11 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 
 		if select_query:
 			if format == "png" or format == "webp":
-				args = {
-					"format": format.upper(),
+				save_args = {
+					"format": format,
+					"compress_level": 9 if compression else None,
 					"quality": 100,
 				}
-
-				if compression:
-					args["compress_level"] = 9
 
 				workers = max(1, workers)
 
@@ -298,45 +309,37 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 						if not rows:
 							break
 
-					for _, z, x, y, new_data, old_data in rows:
-						if old_data:
-							out = io.BytesIO()
+						for _, z, x, y, new_data, old_data in rows:
+							if old_data:
+								out = io.BytesIO()
 
-							Image.alpha_composite(Image.open(io.BytesIO(old_data)), Image.open(io.BytesIO(new_data))).save(out, **args)
+								Image.alpha_composite(Image.open(io.BytesIO(old_data)), Image.open(io.BytesIO(new_data))).save(out, **save_args)
 
-							merged = out.getvalue()
-						else:
-							merged = new_data
+								merged = out.getvalue()
+							else:
+								merged = new_data
 
-						cur.execute(insert_query, (z, x, y, merged))
-
-					last_rowid = rows[-1][0]
-				# ========= MULTI PROCESS =========
-				else:
-					def composite_worker(task):
-						z, x, y, new_data, old_data = task
-
-						if old_data:
-							out = io.BytesIO()
-
-							Image.alpha_composite(Image.open(io.BytesIO(old_data)), Image.open(io.BytesIO(new_data))).save(out, **args)
-
-							return z, x, y, out.getvalue()
-						else:
-							return z, x, y, new_data
-
-					pool = Pool(workers)
-
-					while True:
-						cur.execute(select_query, (last_rowid, batch))
-						rows = cur.fetchall()
-						if not rows:
-							break
-
-						for z, x, y, merged in pool.imap_unordered(composite_worker, [(z, x, y, new_data, old_data) for _, z, x, y, new_data, old_data in rows]):
 							cur.execute(insert_query, (z, x, y, merged))
 
 						last_rowid = rows[-1][0]
+				# ========= MULTI PROCESS =========
+				else:
+					try:
+						pool = Pool(workers)
+
+						while True:
+							cur.execute(select_query, (last_rowid, batch))
+							rows = cur.fetchall()
+							if not rows:
+								break
+
+							for z, x, y, merged in pool.imap_unordered(composite_worker, [(z, x, y, new_data, old_data, save_args) for _, z, x, y, new_data, old_data in rows]):
+								cur.execute(insert_query, (z, x, y, merged))
+
+							last_rowid = rows[-1][0]
+					finally:
+						pool.close()
+						pool.join()
 			else:
 				raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{format}'")
 		else:
@@ -347,7 +350,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch):
 		cur.execute("DETACH DATABASE src;")
 
 	return {
-		"bbox": final_bbox,
+		"bbox": ",".join(str(x) for x in final_bbox),
 		"minzoom": final_minzoom,
 		"maxzoom": final_maxzoom
 	}
