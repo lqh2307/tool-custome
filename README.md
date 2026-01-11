@@ -19,3 +19,25 @@ find /data/srmt -type f -name "*.hgt" > hgt_list.txt \
 && dem_to_rgb -in elevation.vrt -out elevation.tif -c -w 16 \
 && NUM_THREADS=ALL_CPUS GDAL_NUM_THREADS=ALL_CPUS gdal_translate -r lanczos -co TILE_FORMAT=PNG -co ZLEVEL=9 elevation.tif elevation.mbtiles \
 && extract_mbtiles -o data/elevation.mbtiles -ovr -w 16 -ei -r lanczos -c
+
+#!/bin/bash
+
+for f in 1M-500K/*.tif; do
+  echo "Checking $f..."
+
+  # Check if any band has ColorInterpretation = Palette
+  if gdalinfo "$f" | grep -q 'ColorInterp=Palette'; then
+    echo " -> Palette detected, converting..."
+
+    dir=$(dirname "$f")
+    base=$(basename "$f")
+    tmp="$dir/tmp_$base"
+
+    NUM_THREADS=ALL_CPUS GDAL_NUM_THREADS=ALL_CPUS gdal_translate -expand rgba -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=2 -co TILED=YES -co BLOCKXSIZE=512 -co BLOCKYSIZE=512 "$f" "$tmp" && mv -f "$tmp" "$f"
+  else
+    echo " -> No palette, skip"
+  fi
+done
+
+find 1M-500K -type f -name "*.hgt" > data_list.txt
+NUM_THREADS=ALL_CPUS GDAL_NUM_THREADS=ALL_CPUS gdal_translate -r lanczos -co TILE_FORMAT=PNG -co ZLEVEL=9 1M-500K/elevation.vrt elevation.mbtiles
