@@ -106,6 +106,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 COPY --from=builder ${PREFIX_DIR} ${PREFIX_DIR}
 
 ENV PATH=${PREFIX_DIR}/gdal/bin:${PATH}
+ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib
+ENV PYTHONPATH=${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages
 
 VOLUME /data
 
