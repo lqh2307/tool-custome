@@ -22,6 +22,11 @@ LOGGER.addHandler(handler)
 LOGGER.setLevel(logging.INFO)
 
 
+# ========= CONSTANTS =========
+MAX_LON = 180
+MAX_LAT = 90
+
+
 # ========= UTILS =========
 def parse_bounds(bounds):
 	parts = bounds.split(",")
@@ -29,10 +34,12 @@ def parse_bounds(bounds):
 	if len(parts) != 4:
 		raise ValueError("Invalid bounds format")
 
-	if parts[0] >= parts[2] or parts[0] < -180 or parts[2] > 180 or parts[1] >= parts[3] or parts[1] < -90 or parts[3] > 90:
+	bounds = [float(x) for x in parts]
+
+	if bounds[0] >= bounds[2] or bounds[0] < -MAX_LON or bounds[2] > MAX_LON or bounds[1] >= bounds[3] or bounds[1] < -MAX_LAT or bounds[3] > MAX_LAT:
 		raise ValueError("Invalid bounds")
 
-	return [float(x) for x in parts]
+	return bounds
 
 
 def get_tiles_from_bbox(bbox):
