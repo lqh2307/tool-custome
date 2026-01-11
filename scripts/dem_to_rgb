@@ -22,7 +22,9 @@ LOGGER.setLevel(logging.INFO)
 
 
 # ========= ENCODE =========
-def data_to_rgb(data, base_val, interval):
+def data_to_rgb(args):
+	data, base_val, interval = args
+
 	data = data.astype(numpy.float64, copy=False)
 
 	data = (data - base_val) / interval
@@ -89,10 +91,6 @@ if __name__ == "__main__":
 
 		block_h, block_w = src.block_shapes[0]
 
-		# ========= WORKER WRAPPER =========
-		def worker(args):
-			return data_to_rgb(*args)
-
 		# ========= WINDOW GENERATOR =========
 		def window_generator():
 			for y in range(0, src.height, block_h):
@@ -119,7 +117,7 @@ if __name__ == "__main__":
 						)
 
 				with Pool(workers) as pool:
-					for w, rgb in zip(window_generator(), pool.imap(worker, task_gen(), chunksize=1)):
+					for w, rgb in zip(window_generator(), pool.imap(data_to_rgb, task_gen(), chunksize=1)):
 						dst.write(rgb, window=w)
 
 		LOGGER.info(f"Converted DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF {args.input} -> {args.output} in {time.time() - t0:.2f}s!")
