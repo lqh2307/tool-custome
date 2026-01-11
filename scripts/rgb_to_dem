@@ -65,6 +65,7 @@ if __name__ == "__main__":
 	with rasterio.open(args.input) as src:
 		profile = src.profile.copy()
 		profile.update(
+			driver="GTiff",
 			dtype="float64",
 			count=1,
 			nodata=args.base_val,

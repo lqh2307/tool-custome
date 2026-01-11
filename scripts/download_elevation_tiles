@@ -57,8 +57,8 @@ def get_tiles_from_bbox(bbox):
 			yield dir_name, tile_name
 
 
-def download_tile(tile, output, compression):
-	dir_name, tile_name = tile
+def download_tile(args):
+	dir_name, tile_name, output, compression = args
 
 	tile_path = output/dir_name/tile_name
 
@@ -67,7 +67,7 @@ def download_tile(tile, output, compression):
 	LOGGER.info(f"Downloading elevation tile from '{url}'...")
 
 	try:
-		with request.urlopen(url) as res:
+		with request.urlopen(url, timeout=30) as res:
 			tile_path.parent.mkdir(parents=True, exist_ok=True)
 
 			if compression:
@@ -117,17 +117,13 @@ if __name__ == "__main__":
 
 		shutil.rmtree(args.output)
 
-	# ========= WORKER WRAPPER =========
-	def worker(tile):
-		download_tile(tile, args.output, args.compression)
-
 	# ========= TILE GENERATOR =========
 	def tile_generator():
 		for tile_name, dir_name in get_tiles_from_bbox(bbox):
 			if not args.force and (args.output / dir_name / tile_name).exists():
 				continue
 			else:
-				yield (tile_name, dir_name)
+				yield (tile_name, dir_name, args.output, args.compression)
 
 	LOGGER.info(f"Get elevation tiles with BBox: {args.bbox}")
 
@@ -135,7 +131,7 @@ if __name__ == "__main__":
 
 	# ========= ThreadPool download =========
 	total_downloaded = 0
-	for _ in ThreadPool(max(1, args.workers)).imap_unordered(worker, tile_generator()):
+	for _ in ThreadPool(max(1, args.workers)).imap_unordered(download_tile, tile_generator()):
 		total_downloaded += 1
 
 	LOGGER.info(f"Downloaded {total_downloaded} elevation tiles to '{args.output}' in {time.time() - t0:.2f}s!")
