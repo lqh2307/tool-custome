@@ -28,7 +28,8 @@ LOGGER.setLevel(logging.INFO)
 # ========= CONSTANTS =========
 SPHERICAL_RADIUS = 6378137.0
 MAX_LON = 180
-MAX_LAT = 85.051129
+MAX_LAT = 90
+MAX_CAL_LAT = 85.051129
 
 
 # ========= EVIRONMENTS =========
@@ -42,7 +43,7 @@ def parse_bounds(bounds):
 	if len(parts) != 4:
 		raise ValueError("Invalid bounds format")
 
-	if parts[0] >= parts[2] or parts[0] < -180 or parts[2] > 180 or parts[1] >= parts[3] or parts[1] < -90 or parts[3] > 90:
+	if parts[0] >= parts[2] or parts[0] < -MAX_LON or parts[2] > MAX_LON or parts[1] >= parts[3] or parts[1] < -MAX_LAT or parts[3] > MAX_LAT:
 		raise ValueError("Invalid bounds")
 
 	return [float(x) for x in parts]
@@ -63,18 +64,18 @@ def limit_value(value, min = None, max = None):
 
 
 def lonlat4326_to_xy3857(lon, lat):
-	return limit_value(lon, -MAX_LON, MAX_LON) * math.pi / 180 * SPHERICAL_RADIUS, math.log(math.tan(math.pi * (limit_value(lat, -MAX_LAT, MAX_LAT) + 90) / 360)) * SPHERICAL_RADIUS
+	return limit_value(lon, -MAX_LON, MAX_LON) * math.pi / MAX_LON * SPHERICAL_RADIUS, math.log(math.tan(math.pi * (limit_value(lat, -MAX_CAL_LAT, MAX_CAL_LAT) + MAX_LAT) / (2 * MAX_LON))) * SPHERICAL_RADIUS
 
 
 def xy3857_to_lonlat4326(x, y):
-	return limit_value(x / SPHERICAL_RADIUS * 180 / math.pi, -MAX_LON, MAX_LON), limit_value(math.atan(math.sinh(y / SPHERICAL_RADIUS)) * 180 / math.pi, -MAX_LAT, MAX_LAT)
+	return limit_value(x / SPHERICAL_RADIUS * MAX_LON / math.pi, -MAX_LON, MAX_LON), limit_value(math.atan(math.sinh(y / SPHERICAL_RADIUS)) * MAX_LON / math.pi, -MAX_CAL_LAT, MAX_CAL_LAT)
 
 
 def get_xyz_from_lonlatz(lon, lat, z, scheme="tms"):
 	max_tile = 1 << z
 
-	x = (0.5 + limit_value(lon, -MAX_LON, MAX_LON) / 360) * max_tile
-	y = (0.5 - math.log(math.tan(math.pi * (limit_value(lat, -MAX_LAT, MAX_LAT) + 90) / 360)) / (2 * math.pi)) * max_tile
+	x = (0.5 + limit_value(lon, -MAX_LON, MAX_LON) / (2 * MAX_LON)) * max_tile
+	y = (0.5 - math.log(math.tan(math.pi * (limit_value(lat, -MAX_CAL_LAT, MAX_CAL_LAT) + MAX_LAT) / (2 * MAX_LON))) / (2 * math.pi)) * max_tile
 
 	if scheme == "tms":
 		y = max_tile - y
@@ -95,7 +96,7 @@ def get_lonlat_from_xyz(x, y, z, position, scheme="tms"):
 		x += 1
 		y += 1
 
-	return [360 * (x / max_tile - 0.5), (360 * math.atan(math.exp(math.pi * (1 - 2 * y / max_tile))) / math.pi) - 90]
+	return [(2 * MAX_LON) * (x / max_tile - 0.5), ((2 * MAX_LON) * math.atan(math.exp(math.pi * (1 - 2 * y / max_tile))) / math.pi) - MAX_LAT]
 
 
 def get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme = "tms"):
@@ -174,10 +175,11 @@ def get_mbtiles_bounds_from_tiles(cur, scheme="tms"):
 
 	bounds[0] = limit_value(bounds[0], -MAX_LON, MAX_LON)
 	bounds[2] = limit_value(bounds[2], -MAX_LON, MAX_LON)
-	bounds[1] = limit_value(bounds[1], -MAX_LAT, MAX_LAT)
-	bounds[3] = limit_value(bounds[3], -MAX_LAT, MAX_LAT)
+	bounds[1] = limit_value(bounds[1], -MAX_CAL_LAT, MAX_CAL_LAT)
+	bounds[3] = limit_value(bounds[3], -MAX_CAL_LAT, MAX_CAL_LAT)
 
 	return bounds
+
 
 def get_mbtiles_zoom_level_from_tiles(cur, min):
 	if min:
@@ -268,7 +270,7 @@ def composite_image(args):
 	return z, x, y, out.getvalue()
 
 
-def merge_tiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, batch_size):
+def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, batch_size):
 	insert_query = None
 	select_query = None
 	if merge_strategy == "overwrite":
@@ -281,16 +283,16 @@ def merge_tiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, b
 
 	final_bounds = None
 
-	for path in inputs:
-		LOGGER.info(f"Merging {path}...")
+	for idx in inputs:
+		LOGGER.info(f"Merging MBTiles '{inputs[idx]}' - {idx + 1}...")
 
 		bounds = None
 		last_rowid = 0
 
-		src_conn = sqlite3.connect(path)
+		src_conn = sqlite3.connect(inputs[idx])
 		src_cur = src_conn.cursor()
 
-		src_cur.execute("SELECT value FROM metadata WHERE name = ?;", )
+		src_cur.execute("SELECT value FROM metadata WHERE name = ?;", ("bounds",))
 		src_row = src_cur.fetchone()
 		if src_row:
 			bounds = parse_bounds(src_row[0])
@@ -298,6 +300,8 @@ def merge_tiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, b
 			bounds = get_mbtiles_bounds_from_tiles(src_cur, "tms")
 
 		if bbox and get_intersect_bbox(bbox, bounds) is None:
+			LOGGER.info(f"Skipping MBTiles '{inputs[idx]}' - {idx + 1}...")
+
 			continue
 
 		format = get_mbtiles_format_from_tiles(src_cur)
@@ -306,7 +310,7 @@ def merge_tiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, b
 
 		final_bounds = get_cover_bbox(final_bounds, bounds)
 
-		cur.execute("ATTACH DATABASE ? AS src;", (str(path),))
+		cur.execute("ATTACH DATABASE ? AS src;", (str(inputs[idx]),))
 
 		conn.execute("BEGIN;")
 
@@ -538,25 +542,25 @@ if __name__ == "__main__":
 		except Exception as e:
 			raise ValueError(f"Invalid Metadata JSON: {e}")
 
-	LOGGER.info(f"Extract MBTiles {args.output}...")
+	LOGGER.info(f"Extract MBTiles '{args.output}'...")
 
 	t0 = time.time()
 
 	conn, cur = connect(args.output)
 
 	if args.metadata_index or args.tiles_index:
-		LOGGER.info(f"Create indexes MBTiles {args.output}...")
+		LOGGER.info(f"Create indexes MBTiles '{args.output}'...")
 
 		create_unique_indexes(cur, args.metadata_index, args.tiles_index)
 
 	merge_bounds = None
 	if args.inputs:
-		LOGGER.info(f"Merge MBTiles {args.output}...")
+		LOGGER.info(f"Merge MBTiles '{args.output}'...")
 
-		merge_bounds = merge_tiles(conn, cur, args.inputs, bbox, args.merge_strategy, args.compression, max(1, args.worker), args.batch_size)
+		merge_bounds = merge_mbtiles(conn, cur, args.inputs, bbox, args.merge_strategy, args.compression, max(1, args.worker), args.batch_size)
 
 	if args.overview:
-		LOGGER.info(f"Create overview MBTiles {args.output}...")
+		LOGGER.info(f"Create overview MBTiles '{args.output}'...")
 
 		conn.close()
 
@@ -565,14 +569,14 @@ if __name__ == "__main__":
 		conn, cur = connect(args.output)
 
 	if args.extra_info:
-		LOGGER.info(f"Update MBTiles hash and created {args.output}...")
+		LOGGER.info(f"Update MBTiles hash and created '{args.output}'...")
 
 		update_hash_and_created(conn, cur, args.batch_size)
 
-	LOGGER.info(f"Update MBTiles metadata {args.output}...")
+	LOGGER.info(f"Update MBTiles metadata '{args.output}'...")
 
 	update_metadata(conn, cur, metadata_json, merge_bounds)
 
 	conn.close()
 
-	LOGGER.info(f"Extracted MBTiles {args.output} in {time.time() - t0:.2f}s!")
+	LOGGER.info(f"Extracted MBTiles '{args.output}' in {time.time() - t0:.2f}s!")

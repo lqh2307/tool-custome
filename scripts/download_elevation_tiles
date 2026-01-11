@@ -97,10 +97,6 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
-	LOGGER.info(f"Get elevation tiles with BBox: {args.bbox}")
-
-	t0 = time.time()
-
 	# Parse and validate bbox
 	bbox = None
 	try:
@@ -110,7 +106,7 @@ if __name__ == "__main__":
 
 	# Force
 	if args.force and args.output.exists():
-		LOGGER.info(f"Deleting old tiles in {args.output}...")
+		LOGGER.info(f"Deleting old tiles in '{args.output}'...")
 
 		shutil.rmtree(args.output)
 
@@ -126,9 +122,13 @@ if __name__ == "__main__":
 			else:
 				yield (tile_name, dir_name)
 
-	# ThreadPool download
+	LOGGER.info(f"Get elevation tiles with BBox: {args.bbox}")
+
+	t0 = time.time()
+
+	# ========= ThreadPool download =========
 	total_downloaded = 0
 	for _ in ThreadPool(max(1, args.workers)).imap_unordered(worker, tile_generator()):
 		total_downloaded += 1
 
-	LOGGER.info(f"Downloaded {total_downloaded} elevation tiles to {args.output} in {time.time() - t0:.2f}s!")
+	LOGGER.info(f"Downloaded {total_downloaded} elevation tiles to '{args.output}' in {time.time() - t0:.2f}s!")
