@@ -22,6 +22,19 @@ LOGGER.addHandler(handler)
 LOGGER.setLevel(logging.INFO)
 
 
+# ========= UTILS =========
+def parse_bounds(bounds):
+	parts = bounds.split(",")
+
+	if len(parts) != 4:
+		raise ValueError("Invalid bounds format")
+
+	if parts[0] >= parts[2] or parts[0] < -180 or parts[2] > 180 or parts[1] >= parts[3] or parts[1] < -90 or parts[3] > 90:
+		raise ValueError("Invalid bounds")
+
+	return [float(x) for x in parts]
+
+
 def get_tiles_from_bbox(bbox):
 	min_x, min_y = map(floor, bbox[:2])
 	max_x, max_y = map(ceil, bbox[2:])
@@ -89,19 +102,11 @@ if __name__ == "__main__":
 	t0 = time.time()
 
 	# Parse and validate bbox
+	bbox = None
 	try:
-		bbox = min_x, min_y, max_x, max_y = [
-			float(x) for x in args.bbox.split(",")]
-
-		if min_x > max_x or min_x < -180 or max_x > 180 or min_y > max_y or min_y < -90 or max_y > 90:
-			LOGGER.error(f"Invalid BBox: {bbox}")
-
-			sys.exit(1)
-	except ValueError:
-		LOGGER.error(
-			f"'{args.bbox}' is not a comma-separated string of BBox coordinates")
-
-		sys.exit(1)
+		bbox = parse_bounds(args.bbox)
+	except ValueError as e:
+		raise ValueError(f"Invalid BBox coordinates: ${e}")
 
 	# Force
 	if args.force and args.output.exists():

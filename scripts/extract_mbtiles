@@ -42,6 +42,9 @@ def parse_bounds(bounds):
 	if len(parts) != 4:
 		raise ValueError("Invalid bounds format")
 
+	if parts[0] >= parts[2] or parts[0] < -180 or parts[2] > 180 or parts[1] >= parts[3] or parts[1] < -90 or parts[3] > 90:
+		raise ValueError("Invalid bounds")
+
 	return [float(x) for x in parts]
 
 
@@ -134,33 +137,47 @@ def get_cover_bbox(bbox1, bbox2):
 	elif bbox2:
 		return bbox2
 
+	return None
+
+
+def get_intersect_bbox(bbox1, bbox2):
+	if bbox1 and bbox2:
+		minLon = bbox1[0] if bbox1[0] > bbox2[0] else bbox2[0]
+		minLat = bbox1[1] if bbox1[1] > bbox2[1] else bbox2[1]
+		maxLon = bbox1[2] if bbox1[2] < bbox2[2] else bbox2[2]
+		maxLat = bbox1[3] if bbox1[3] < bbox2[3] else bbox2[3]
+
+		if (minLon >= maxLon or minLat >= maxLat):
+			return None
+	elif bbox1:
+		return bbox1
+	elif bbox2:
+		return bbox2
+
+	return None
+
 
 # ========= MBTILES =========
-def get_mbtiles_bbox_from_tiles(cur, scheme="tms"):
+def get_mbtiles_bounds_from_tiles(cur, scheme="tms"):
 	cur.execute("SELECT zoom_level, MIN (tile_column), MAX (tile_column), MIN (tile_row), MAX (tile_row) FROM tiles GROUP BY zoom_level;")
 	rows = cur.fetchall()
 	if not rows:
-		raise ValueError("No row found")
+		return None
 
 	z, x_min, x_max, y_min, y_max = rows[0]
-	bbox = get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme)
+	bounds = get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme)
 
 	for row in rows[1:]:
 		z, x_min, x_max, y_min, y_max = row
 
-		bbox = get_cover_bbox(bbox, get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme))
+		bounds = get_cover_bbox(bounds, get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme))
 
-	bbox[0] = limit_value(bbox[0], -MAX_LON, MAX_LON)
-	bbox[2] = limit_value(bbox[2], -MAX_LON, MAX_LON)
-	bbox[1] = limit_value(bbox[1], -MAX_LAT, MAX_LAT)
-	bbox[3] = limit_value(bbox[3], -MAX_LAT, MAX_LAT)
+	bounds[0] = limit_value(bounds[0], -MAX_LON, MAX_LON)
+	bounds[2] = limit_value(bounds[2], -MAX_LON, MAX_LON)
+	bounds[1] = limit_value(bounds[1], -MAX_LAT, MAX_LAT)
+	bounds[3] = limit_value(bounds[3], -MAX_LAT, MAX_LAT)
 
-	return bbox
-
-
-def get_mbtiles_center_from_bbox_and_zoom(bbox, minzoom, maxzoom):
-	return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2, math.floor((minzoom + maxzoom) / 2)]
-
+	return bounds
 
 def get_mbtiles_zoom_level_from_tiles(cur, min):
 	if min:
@@ -170,7 +187,7 @@ def get_mbtiles_zoom_level_from_tiles(cur, min):
 
 	row = cur.fetchone()
 	if not row:
-		raise ValueError("No row found")
+		return None
 
 	return row[0]
 
@@ -179,7 +196,7 @@ def get_mbtiles_format_from_tiles(cur):
 	cur.execute("SELECT tile_data FROM tiles LIMIT 1;")
 	row = cur.fetchone()
 	if not row:
-		raise ValueError("No row found")
+		return None
 
 	if row[0].startswith(b"\x89PNG\r\n\x1a\n"):
 		return "png"
@@ -251,7 +268,7 @@ def composite_image(args):
 	return z, x, y, out.getvalue()
 
 
-def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch_size):
+def merge_tiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, batch_size):
 	insert_query = None
 	select_query = None
 	if merge_strategy == "overwrite":
@@ -267,7 +284,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch_s
 	for path in inputs:
 		LOGGER.info(f"Merging {path}...")
 
-		bbox = None
+		bounds = None
 		last_rowid = 0
 
 		src_conn = sqlite3.connect(path)
@@ -276,15 +293,18 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch_s
 		src_cur.execute("SELECT value FROM metadata WHERE name = ?;", )
 		src_row = src_cur.fetchone()
 		if src_row:
-			bbox = parse_bounds(src_row[0])
+			bounds = parse_bounds(src_row[0])
 		else:
-			bbox = get_mbtiles_bbox_from_tiles(src_cur, "tms")
+			bounds = get_mbtiles_bounds_from_tiles(src_cur, "tms")
+
+		if bbox and get_intersect_bbox(bbox, bounds) is None:
+			continue
 
 		format = get_mbtiles_format_from_tiles(src_cur)
 
 		src_conn.close()
 
-		final_bounds = get_cover_bbox(final_bounds, bbox)
+		final_bounds = get_cover_bbox(final_bounds, bounds)
 
 		cur.execute("ATTACH DATABASE ? AS src;", (str(path),))
 
@@ -297,8 +317,6 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch_s
 					"compress_level": 9 if compression else None,
 					"quality": 100,
 				}
-
-				workers = max(1, workers)
 
 				# ========= SINGLE PROCESS =========
 				if workers == 1:
@@ -341,7 +359,7 @@ def merge_tiles(conn, cur, inputs, merge_strategy, compression, workers, batch_s
 
 		cur.execute("DETACH DATABASE src;")
 
-	return final_bounds
+	return get_intersect_bbox(bbox, final_bounds)
 
 
 def update_metadata(conn, cur, metadata_json, merge_bounds):
@@ -352,64 +370,62 @@ def update_metadata(conn, cur, metadata_json, merge_bounds):
 	if rows:
 		final_metadata.update({ row[0]: row[1] for row in rows })
 
-	if merge_bounds is not None:
+	if merge_bounds:
 		if "bounds" in final_metadata:
 			final_metadata["bounds"] = encode_array(get_cover_bbox(parse_bounds(final_metadata["bounds"]), merge_bounds))
 		else:
 			final_metadata["bounds"] = encode_array(merge_bounds)
 
-	user_metadata = {}
 	if metadata_json:
-		try:
-			user_metadata = json.loads(metadata_json)
-			if not isinstance(user_metadata, dict):
-				raise ValueError("Metadata JSON must be an object")
-		except json.JSONDecodeError as e:
-			raise ValueError(f"Invalid JSON metadata: {e}")
+		final_metadata.update(metadata_json)
 
 	if "name" not in final_metadata:
-		if "name" in user_metadata:
-			final_metadata["name"] = user_metadata["name"]
-		else:
-			final_metadata["name"] = "Unknown"
+		final_metadata["name"] = "Unknown"
 
 	if "description" not in final_metadata:
-		if "description" in user_metadata:
-			final_metadata["description"] = user_metadata["description"]
-		else:
-			final_metadata["description"] = final_metadata["name"]
+		final_metadata["description"] = final_metadata["name"]
 
 	if "attribution" not in final_metadata:
-		if "attribution" in user_metadata:
-			final_metadata["attribution"] = user_metadata["attribution"]
-		else:
-			final_metadata["attribution"] = "<b>Viettel HighTech</b>"
+		final_metadata["attribution"] = "<b>Viettel HighTech</b>"
 
 	if "version" not in final_metadata:
-		if "version" in user_metadata:
-			final_metadata["version"] = user_metadata["version"]
-		else:
-			final_metadata["version"] = "1.0.0"
+		final_metadata["version"] = "1.0.0"
 
 	if "type" not in final_metadata:
-		if "type" in user_metadata:
-			final_metadata["type"] = user_metadata["type"]
-		else:
-			final_metadata["type"] = "overlay"
+		final_metadata["type"] = "overlay"
 
-	final_metadata["format"] = get_mbtiles_format_from_tiles(cur)
-	final_metadata["minzoom"] = str(get_mbtiles_zoom_level_from_tiles(cur, True))
-	final_metadata["maxzoom"] = str(get_mbtiles_zoom_level_from_tiles(cur, False))
+	if "format" not in final_metadata:
+		format = get_mbtiles_format_from_tiles(cur)
+		if format is not None:
+			final_metadata["format"] = format
 
+	minzoom = None
+	if "minzoom" not in final_metadata:
+		minzoom = get_mbtiles_zoom_level_from_tiles(cur, True)
+		if minzoom is not None:
+			final_metadata["minzoom"] = str(minzoom)
+
+	maxzoom = None
+	if "maxzoom" not in final_metadata:
+		maxzoom = get_mbtiles_zoom_level_from_tiles(cur, False)
+		if maxzoom is not None:
+			final_metadata["maxzoom"] = str(maxzoom)
+
+	bounds = None
 	if "bounds" not in final_metadata:
-		bbox = get_mbtiles_bbox_from_tiles(cur, "tms")
-
-		final_metadata["bounds"] = encode_array(bbox)
+		bounds = get_mbtiles_bounds_from_tiles(cur, "tms")
+		if bounds:
+			final_metadata["bounds"] = encode_array(bounds)
 	else:
-		bbox = parse_bounds(final_metadata["bounds"])
+		bounds = parse_bounds(final_metadata["bounds"])
 
 	if "center" not in final_metadata:
-		final_metadata["center"] = encode_array(get_mbtiles_center_from_bbox_and_zoom(bbox, int(final_metadata["minzoom"]), int(final_metadata["maxzoom"])))
+		if bounds and minzoom is not None and maxzoom is not None:
+			lon = (bounds[0] + bounds[2]) / 2
+			lat = (bounds[1] + bounds[3]) / 2
+			zoom = math.floor((minzoom + maxzoom) / 2)
+
+			final_metadata["center"] = encode_array([lon, lat, zoom])
 
 	insert_query = "INSERT INTO metadata (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value;"
 
@@ -500,9 +516,27 @@ if __name__ == "__main__":
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression tile for output MBTiles")
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
 	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "average", "rms", "gauss", "bilinear", "cubic", "cubicspline", "lanczos", "average_magphase", "mode"], default="nearest", help="Resampling method to create overview")
-	parser.add_argument("-b", "--bbox", required=False, type=str, default="-180,-90,180,90", help="Only merge tiles covered by bounding box coordinates in the format 'minX,minY,maxX,maxY'")
+	parser.add_argument("-b", "--bbox", required=False, type=str, help="Only merge tiles covered by bounding box coordinates in the format 'minX,minY,maxX,maxY'")
 
 	args = parser.parse_args()
+
+	# Parse and validate bbox
+	bbox = None
+	if args.bbox:
+		try:
+			bbox = parse_bounds(args.bbox)
+		except ValueError as e:
+			raise ValueError(f"Invalid BBox coordinates: ${e}")
+
+	# Parse and validate metadata json
+	metadata_json = None
+	if args.metadata_json:
+		try:
+			metadata_json = json.loads(args.metadata_json)
+			if not isinstance(metadata_json, dict):
+				raise ValueError("Metadata JSON must be an object")
+		except Exception as e:
+			raise ValueError(f"Invalid Metadata JSON: {e}")
 
 	LOGGER.info(f"Extract MBTiles {args.output}...")
 
@@ -519,7 +553,7 @@ if __name__ == "__main__":
 	if args.inputs:
 		LOGGER.info(f"Merge MBTiles {args.output}...")
 
-		merge_bounds = merge_tiles(conn, cur, args.inputs, args.merge_strategy, args.compression, args.workers, args.batch_size)
+		merge_bounds = merge_tiles(conn, cur, args.inputs, bbox, args.merge_strategy, args.compression, max(1, args.worker), args.batch_size)
 
 	if args.overview:
 		LOGGER.info(f"Create overview MBTiles {args.output}...")
@@ -537,7 +571,7 @@ if __name__ == "__main__":
 
 	LOGGER.info(f"Update MBTiles metadata {args.output}...")
 
-	update_metadata(conn, cur, args.metadata_json, merge_bounds)
+	update_metadata(conn, cur, metadata_json, merge_bounds)
 
 	conn.close()
 
