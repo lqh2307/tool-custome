@@ -36,6 +36,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libpq-dev \
 		libopenjp2-7-dev \
     libmuparser-dev \  
+		libhdf4-alt-dev \
+		libhdf5-serial-dev \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -75,7 +77,6 @@ ARG PREFIX_DIR=/usr/local/opt
 # ubuntu 24.04
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
-		ca-certificates \
 		python3 \
 		python3-numpy \
 		libcurl4t64 \
@@ -99,13 +100,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libopenjp2-7 \
 		libmuparser2v5 \
 		libtcmalloc-minimal4 \
+		libhdf4-0-alt \
+		libhdf5-103-1 \
+		libhdf5-cpp-103-1 \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder ${PREFIX_DIR} ${PREFIX_DIR}
 
-ENV PATH=${PREFIX_DIR}/gdal/bin:${PATH}
+ENV PATH=${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PATH}
 ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib
 ENV PYTHONPATH=${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages
 

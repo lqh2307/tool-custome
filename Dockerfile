@@ -72,8 +72,16 @@ ARG PREFIX_DIR=/usr/local/opt
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get upgrade -y \
 	&& apt-get install -y \
-		build-essential \
+ 		build-essential \
 		cmake \
+		swig \
+		autoconf \
+		automake \
+		python3-dev \
+		python3-numpy \
+		python3-setuptools \
+		libcurl4-openssl-dev \
+		libgeos-dev \
 		libproj-dev \
 		libsqlite3-dev \
 		librasterlite2-dev \
@@ -83,6 +91,15 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libgif-dev \
 		libwebp-dev \
 		libtiff-dev \
+		libexpat-dev \
+		libxerces-c-dev \
+		libdeflate-dev \
+		libzstd-dev \
+		libpq-dev \
+		libopenjp2-7-dev \
+    libmuparser-dev \ 
+		libhdf4-alt-dev \
+		libhdf5-serial-dev \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -158,6 +175,10 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libboost-system1.83.0 \
 		zlib1g \
 		osmosis \
+		libcurl4t64 \
+		libpython3.12 \
+		libgeos3.12.1 \
+		libgeos-c1v5 \
 		libproj25 \
 		librasterlite2-1 \
 		libspatialite8 \
@@ -172,6 +193,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libbz2-1.0 \
 		liblz4-1 \
 		libexpat1 \
+		libxerces-c3.2 \
+		libdeflate0 \
+		libzstd1 \
+		libpq5 \
+		libopenjp2-7 \
+		libmuparser2v5 \
+		libtcmalloc-minimal4 \
+		libhdf4-0-alt \
+		libhdf5-103-1 \
+		libhdf5-cpp-103-1 \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -182,7 +213,9 @@ COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=osmium-tool-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/tippecanoe/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/osmium-tool/bin:${PREFIX_DIR}/scripts:${PATH}
+ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/tippecanoe/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/osmium-tool/bin:${PREFIX_DIR}/scripts:${PATH}
+ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib
+ENV PYTHONPATH=${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages
 
 VOLUME /data
 
