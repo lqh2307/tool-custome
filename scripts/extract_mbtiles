@@ -288,7 +288,7 @@ def composite_tile(args):
 
 
 def build_parent_tile(args):
-	p_x, p_y, childrens, tile_size, save_args, is_fip, resampling = args
+	p_zoom, p_x, p_y, childrens, tile_size, save_args, is_fip, resampling = args
 
 	canvas = Image.new("RGBA", (tile_size * 2, tile_size * 2), (255, 255, 255, 0))
 
@@ -309,13 +309,13 @@ def build_parent_tile(args):
 
 	canvas.resize((tile_size, tile_size), resampling).save(out, **save_args)
 
-	return p_x, p_y, out.getvalue()
+	return p_zoom, p_x, p_y, out.getvalue()
 
 
 def hash_tile(args):
-	z, x, y, tile_data = args
+	z, x, y, tile_data, created = args
 
-	return z, x, y, hashlib.md5(tile_data).hexdigest()
+	return hashlib.md5(tile_data).hexdigest(), created, z, x, y
 
 
 def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, batch_size, scheme="tms"):
@@ -399,9 +399,7 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 								cur.execute(insert_query, data)
 						else:
 							for _, z, x, y, new_data, old_data in rows:
-								data = composite_tile((z, x, y, new_data, old_data, save_args))
-
-								cur.execute(insert_query, data)
+								cur.execute(insert_query, composite_tile((z, x, y, new_data, old_data, save_args)))
 
 						last_rowid = rows[-1][0]
 				finally:
@@ -559,18 +557,18 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 		while maxzoom > 0:
 			created_tiles = 0
 
-			child_zoom = maxzoom
-			parent_zoom = maxzoom - 1
+			c_zoom = maxzoom
+			p_zoom = maxzoom - 1
 
 			last_p_x = -1
 			last_p_y = -1
 
-			LOGGER.info(f"Creating zoom - {parent_zoom}...")
+			LOGGER.info(f"Creating zoom - {p_zoom}...")
 
 			while True:
 				tasks = []
 
-				cur.execute(select_p_query, (child_zoom, last_p_x, last_p_x, last_p_y, batch_size))
+				cur.execute(select_p_query, (c_zoom, last_p_x, last_p_x, last_p_y, batch_size))
 				parents = cur.fetchall()
 				if not parents:
 					break
@@ -581,29 +579,27 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 					min_c_y = p_y * 2
 					max_c_y = min_c_y + 1
 
-					cur.execute(select_c_range_query, (child_zoom, min_c_x, max_c_x, min_c_y, max_c_y))
+					cur.execute(select_c_range_query, (c_zoom, min_c_x, max_c_x, min_c_y, max_c_y))
 					childrens = cur.fetchall()
 					if not childrens:
 						continue
 
-					tasks.append((p_x, p_y, childrens, tile_size, save_args, is_fip, resampling))
+					tasks.append((p_zoom, p_x, p_y, childrens, tile_size, save_args, is_fip, resampling))
 
 				if pool:
-					for x, y, data in pool.imap_unordered(build_parent_tile, tasks):
-						cur.execute(insert_query, (parent_zoom, x, y, data))
+					for data in pool.imap_unordered(build_parent_tile, tasks):
+						cur.execute(insert_query, data)
 
 						created_tiles += 1
 				else:
 					for task in tasks:
-						x, y, data = build_parent_tile(task)
-
-						cur.execute(insert_query, (parent_zoom, x, y, data))
+						cur.execute(insert_query, build_parent_tile(task))
 
 						created_tiles += 1
 
 				last_p_x, last_p_y = parents[-1]
 
-			maxzoom = parent_zoom
+			maxzoom = p_zoom
 
 			if created_tiles <= 1:
 				break
@@ -657,11 +653,11 @@ def update_hash_and_created(conn, cur, batch_size):
 				break
 
 			if pool:
-				for z, x, y, md5 in pool.imap_unordered(hash_tile, [(z, x, y, tile_data) for _, z, x, y, tile_data in rows]):
-					cur.execute(update_query, (md5, created, z, x, y))
+				for data in pool.imap_unordered(hash_tile, [(z, x, y, tile_data, created) for _, z, x, y, tile_data in rows]):
+					cur.execute(update_query, data)
 			else:
 				for _, z, x, y, tile_data in rows:
-					cur.execute(update_query, (hashlib.md5(tile_data).hexdigest(), created, z, x, y))
+					cur.execute(update_query, hash_tile((z, x, y, tile_data, created)))
 			
 			last_rowid = rows[-1][0]
 	finally:
