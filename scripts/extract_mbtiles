@@ -31,11 +31,6 @@ MAX_LAT = 90
 MAX_CAL_LAT = 85.051129
 
 
-# ========= EVIRONMENTS =========
-os.environ["GDAL_NUM_THREADS"] = "ALL_CPUS"
-os.environ["NUM_THREADS"] = "ALL_CPUS"
-
-
 # ========= UTILS =========
 def parse_bounds(bounds):
 	parts = bounds.split(",")
