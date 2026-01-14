@@ -275,8 +275,6 @@ def composite_image(args):
 
 	if not old_data:
 		new_img.save(out, **save_args)
-
-		return z, x, y, out.getvalue()
 	else:
 		old_img = Image.open(io.BytesIO(old_data))
 
@@ -536,7 +534,7 @@ def create_overview(conn, cur, resampling, compression, batch_size):
 
 		LOGGER.info(f"Creating overview z={maxzoom}...")
 
-		for rowid, c_z, c_x, c_y in rows:
+		for _, c_z, c_x, c_y in rows:
 			p_x = c_x // 2
 			p_y = c_y // 2
 
@@ -575,7 +573,7 @@ def create_overview(conn, cur, resampling, compression, batch_size):
 
 				cur.execute(insert_query, (maxzoom, p_x, p_y, out.getvalue()))
 
-		last_rowid = rowid
+		last_rowid = rows[-1][0]
 
 	conn.execute("COMMIT;")
 
@@ -616,10 +614,10 @@ def update_hash_and_created(conn, cur, batch_size):
 		if not rows:
 			break
 
-		for rowid, z, x, y, tile_data in rows:
+		for _, z, x, y, tile_data in rows:
 			cur.execute(update_query, (hashlib.md5(tile_data).hexdigest(), created, z, x, y))
 
-			last_rowid = rowid
+		last_rowid = rows[-1][0]
 
 	conn.execute("COMMIT;")
 
