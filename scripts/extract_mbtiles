@@ -13,7 +13,6 @@ import math
 import json
 import sys
 import io
-import os
 
 
 # ========= LOGS =========
@@ -156,6 +155,15 @@ def get_intersect_bbox(bbox1, bbox2):
 
 
 # ========= MBTILES =========
+def get_mbtiles_metadatas(cur):
+	cur.execute("SELECT name, value FROM metadata;")
+	rows = cur.fetchall()
+	if not rows:
+		return None
+
+	return { name: value for name, value in rows }
+
+
 def get_mbtiles_bounds_from_tiles(cur, scheme="tms"):
 	cur.execute("SELECT zoom_level, MIN (tile_column), MAX (tile_column), MIN (tile_row), MAX (tile_row) FROM tiles GROUP BY zoom_level;")
 	rows = cur.fetchall()
@@ -210,15 +218,13 @@ def get_mbtiles_format_from_tiles(cur):
 		return "pbf"
 
 
-def get_mbtiles_tile_info_from_tiles(cur):
+def get_mbtiles_tile_size_from_tiles(cur):
 	cur.execute("SELECT tile_data FROM tiles LIMIT 1;")
 	row = cur.fetchone()
 	if not row:
-		return None, None
+		return None
 
-	image = Image.open(io.BytesIO(row[0]))
-
-	return image.width, image.mode == "RGBA"
+	return Image.open(io.BytesIO(row[0])).width
 
 
 def connect(file_path):
@@ -266,24 +272,47 @@ def create_unique_indexes(cur, metadata_index, tiles_index):
 		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
 
 
-def composite_image(args):
+def composite_tile(args):
 	z, x, y, new_data, old_data, save_args = args
 
-	new_img = Image.open(io.BytesIO(new_data))
+	new_img = Image.open(io.BytesIO(new_data)).convert("RGBA")
 
 	out = io.BytesIO()
 
 	if not old_data:
 		new_img.save(out, **save_args)
 	else:
-		old_img = Image.open(io.BytesIO(old_data))
-
-		(Image.alpha_composite(old_img, new_img) if old_img.mode == "RGBA" else old_img.paste(new_img)).save(out, **save_args)
+		Image.alpha_composite(Image.open(io.BytesIO(old_data)).convert("RGBA"), new_img).save(out, **save_args)
 
 	return z, x, y, out.getvalue()
 
 
-def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, batch_size):
+def build_parent_tile(args):
+	p_x, p_y, childrens, tile_size, save_args, is_fip, resampling = args
+
+	canvas = Image.new("RGBA", (tile_size * 2, tile_size * 2), (255, 255, 255, 0))
+
+	min_c_x = p_x * 2
+	min_c_y = p_y * 2
+	max_c_y = min_c_y + 1
+
+	for cx, cy, cdata in childrens:
+		canvas.alpha_composite(
+			Image.open(io.BytesIO(cdata)).convert("RGBA"),
+			(
+				(cx - min_c_x) * tile_size,
+				(cy - min_c_y if is_fip else max_c_y - cy) * tile_size,
+			)
+		)
+
+	out = io.BytesIO()
+
+	canvas.resize((tile_size, tile_size), resampling).save(out, **save_args)
+
+	return p_x, p_y, out.getvalue()
+
+
+def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, batch_size, scheme="tms"):
 	insert_query = None
 	select_query = None
 	if merge_strategy == "overwrite":
@@ -297,7 +326,7 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 	final_bounds = None
 
 	for idx, path in enumerate(inputs):
-		LOGGER.info(f"Merging MBTiles '{path}' - {idx + 1}...")
+		LOGGER.info(f"Merging '{path}' - {idx + 1}...")
 
 		bounds = None
 		last_rowid = 0
@@ -310,7 +339,7 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 		if src_row:
 			bounds = parse_bounds(src_row[0])
 		else:
-			bounds = get_mbtiles_bounds_from_tiles(src_cur, "tms")
+			bounds = get_mbtiles_bounds_from_tiles(src_cur, scheme)
 
 		if bbox and get_intersect_bbox(bbox, bounds) is None:
 			LOGGER.info(f"Skipping MBTiles '{path}' - {idx + 1}...")
@@ -334,7 +363,7 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 				raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
 			else:
 				save_args = {
-					"format": tile_format,
+					"format": tile_format.upper(),
 					"optimize": True,
 					"lossless": True,
 					"quality": 100,
@@ -347,36 +376,30 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 						"subsampling": 2,
 					})
 
-				# ========= SINGLE PROCESS =========
-				if workers == 1:
+				if workers > 1:
+					pool = Pool(workers)
+				else:
+					pool = None
+
+				try:
 					while True:
 						cur.execute(select_query, (last_rowid, batch_size))
 						rows = cur.fetchall()
 						if not rows:
 							break
 
-						for _, z, x, y, new_data, old_data in rows:
-							data = composite_image((z, x, y, new_data, old_data, save_args))
+						if pool:
+							for data in pool.imap_unordered(composite_tile, [(z, x, y, new_data, old_data, save_args) for _, z, x, y, new_data, old_data in rows]):
+								cur.execute(insert_query, data)
+						else:
+							for _, z, x, y, new_data, old_data in rows:
+								data = composite_tile((z, x, y, new_data, old_data, save_args))
 
-							cur.execute(insert_query, data)
-
-						last_rowid = rows[-1][0]
-				# ========= MULTI PROCESS =========
-				else:
-					try:
-						pool = Pool(workers)
-
-						while True:
-							cur.execute(select_query, (last_rowid, batch_size))
-							rows = cur.fetchall()
-							if not rows:
-								break
-
-							for data in pool.imap_unordered(composite_image, [(z, x, y, new_data, old_data, save_args) for _, z, x, y, new_data, old_data in rows]):
 								cur.execute(insert_query, data)
 
-							last_rowid = rows[-1][0]
-					finally:
+						last_rowid = rows[-1][0]
+				finally:
+					if pool:
 						pool.close()
 						pool.join()
 		else:
@@ -389,7 +412,7 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 	return get_intersect_bbox(bbox, final_bounds)
 
 
-def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
+def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme="tms"):
 	final_metadata = {}
 
 	cur.execute("SELECT name, value FROM metadata;")
@@ -446,7 +469,7 @@ def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
 
 	bounds = None
 	if "bounds" not in final_metadata:
-		bounds = get_mbtiles_bounds_from_tiles(cur, "tms")
+		bounds = get_mbtiles_bounds_from_tiles(cur, scheme)
 		if bounds:
 			final_metadata["bounds"] = encode_array(bounds)
 	else:
@@ -471,21 +494,26 @@ def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
 
 
 # Create MBTiles overview
-def create_overview(conn, cur, resampling, compression, batch_size):
+def create_overview(conn, cur, resampling, compression, workers, batch_size, scheme="tms"):
 	tile_format = get_mbtiles_format_from_tiles(cur)
 	if tile_format is None or tile_format == "pbf":
 		return None
 
-	tile_size, has_alpha = get_mbtiles_tile_info_from_tiles(cur)
-	if tile_size is None or has_alpha is None:
+	tile_size = get_mbtiles_tile_size_from_tiles(cur)
+	if tile_size is None:
 		return None
 
 	maxzoom = get_mbtiles_zoom_level_from_tiles(cur, False)
 	if maxzoom is None:
 		return None
 
+	is_fip = None
+	metadatas = get_mbtiles_metadatas(cur)
+	if metadatas and "scheme" in metadatas:
+		is_fip = metadatas["scheme"] != scheme
+
 	insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-	select_c_query = "SELECT rowid, zoom_level, tile_column, tile_row FROM tiles WHERE zoom_level = ? AND rowid > ? ORDER BY rowid LIMIT ?;"
+	select_p_query = "SELECT DISTINCT tile_column / 2 as p_x, tile_row / 2 as p_y FROM tiles WHERE zoom_level = ? AND (tile_column / 2 > ? OR (tile_column / 2 = ? AND tile_row / 2 > ?)) ORDER BY p_x, p_y LIMIT ?;"
 	select_c_range_query = "SELECT tile_column, tile_row, tile_data FROM tiles WHERE zoom_level = ? AND tile_column BETWEEN ? AND ? AND tile_row BETWEEN ? AND ?;"
 
 	if resampling == "nearest":
@@ -498,7 +526,7 @@ def create_overview(conn, cur, resampling, compression, batch_size):
 		resampling = Image.LANCZOS
 
 	save_args = {
-		"format": tile_format,
+		"format": tile_format.upper(),
 		"optimize": True,
 		"lossless": True,
 		"quality": 100,
@@ -510,70 +538,69 @@ def create_overview(conn, cur, resampling, compression, batch_size):
 			"subsampling": 2,
 		})
 
-	background_args = (
-		"RGBA",
-		(tile_size * 2, tile_size * 2),
-		(255, 255, 255, 0)) if has_alpha else ("RGB", (tile_size * 2, tile_size * 2), (255, 255, 255),
-	)
-	resize_args = (
-		(tile_size, tile_size),
-		resampling,
-	)
-
 	conn.execute("BEGIN;")
 
 	while maxzoom > 0:
-		last_rowid = 0
+		created_tiles = 0
 
-		cur.execute(select_c_query, (maxzoom, last_rowid, batch_size))
-		rows = cur.fetchall()
-		if not rows:
-			break
+		child_zoom = maxzoom
+		parent_zoom = maxzoom - 1
 
-		maxzoom = maxzoom - 1
+		last_p_x = -1
+		last_p_y = -1
 
-		LOGGER.info(f"Creating overview z={maxzoom}...")
+		LOGGER.info(f"Creating zoom - {parent_zoom}...")
 
-		for _, c_z, c_x, c_y in rows:
-			p_x = c_x // 2
-			p_y = c_y // 2
+		if workers > 1:
+			pool = Pool(workers)
+		else:
+			pool = None
 
-			min_c_x = p_x * 2
-			max_c_x = min_c_x + 1
-			min_c_y = p_y * 2
-			max_c_y = min_c_y + 1
+		try:
+			while True:
+				tasks = []
 
-			cur.execute(select_c_range_query, (c_z, min_c_x, max_c_x, min_c_y, max_c_y))
+				cur.execute(select_p_query, (child_zoom, last_p_x, last_p_x, last_p_y, batch_size))
+				parents = cur.fetchall()
+				if not parents:
+					break
 
-			childrens = cur.fetchall()
-			if not childrens:
-				continue
+				for p_x, p_y in parents:
+					min_c_x = p_x * 2
+					max_c_x = min_c_x + 1
+					min_c_y = p_y * 2
+					max_c_y = min_c_y + 1
 
-			canvas = Image.new(*background_args)
-
-			for cx, cy, cdata in childrens:
-				d = (
-					(cx - min_c_x) * tile_size,
-					(max_c_y - cy) * tile_size,	# TMS flip Y
-				)
-				image = Image.open(io.BytesIO(cdata))
-
-				if has_alpha:
-					# Skip fully transparent
-					if image.getchannel("A").getextrema() == (0, 0):
+					cur.execute(select_c_range_query, (child_zoom, min_c_x, max_c_x, min_c_y, max_c_y))
+					childrens = cur.fetchall()
+					if not childrens:
 						continue
 
-					canvas.alpha_composite(image, d)
+					tasks.append((p_x, p_y, childrens, tile_size, save_args, is_fip, resampling))
+
+				if pool:
+					for x, y, data in pool.imap_unordered(build_parent_tile, tasks):
+						cur.execute(insert_query, (parent_zoom, x, y, data))
+
+						created_tiles += 1
 				else:
-					canvas.paste(image, d)
+					for task in tasks:
+						x, y, data = build_parent_tile(task)
 
-				out = io.BytesIO()
+						cur.execute(insert_query, (parent_zoom, x, y, data))
 
-				canvas.resize(*resize_args).save(out, **save_args)
+						created_tiles += 1
 
-				cur.execute(insert_query, (maxzoom, p_x, p_y, out.getvalue()))
+				last_p_x, last_p_y = parents[-1]
+		finally:
+			if pool:
+				pool.close()
+				pool.join()
 
-		last_rowid = rows[-1][0]
+		maxzoom = parent_zoom
+
+		if created_tiles <= 1:
+			break
 
 	conn.execute("COMMIT;")
 
@@ -662,45 +689,63 @@ if __name__ == "__main__":
 
 	# Parse and validate metadata json
 	metadata_json = None
+	scheme = "tms"
 	if args.metadata_json:
 		try:
 			metadata_json = json.loads(args.metadata_json)
 			if not isinstance(metadata_json, dict):
 				raise ValueError("Metadata JSON must be an object")
+			
+			if "scheme" in metadata_json:
+				scheme = metadata_json["scheme"]
 		except Exception as e:
 			raise ValueError(f"Invalid Metadata JSON: {e}")
 
-	LOGGER.info(f"Extract MBTiles '{args.output}'...")
+	workers = max(1, args.workers)
+
+	LOGGER.info(f"Extracting MBTiles '{args.output}'...")
 
 	t0 = time.time()
 
 	conn, cur = connect(args.output)
 
 	if args.metadata_index or args.tiles_index:
-		LOGGER.info(f"Create indexes MBTiles '{args.output}'...")
+		LOGGER.info(f"Creating indexes MBTiles '{args.output}'...")
 
 		create_unique_indexes(cur, args.metadata_index, args.tiles_index)
 
 	merge_bounds = None
 	if args.inputs:
-		LOGGER.info(f"Merge MBTiles '{args.output}'...")
+		LOGGER.info(f"Merging MBTiles '{args.output}'...")
 
-		merge_bounds = merge_mbtiles(conn, cur, args.inputs, bbox, args.merge_strategy, args.compression, max(1, args.workers), args.batch_size)
+		t1 = time.time()
+
+		merge_bounds = merge_mbtiles(conn, cur, args.inputs, bbox, args.merge_strategy, args.compression, workers, args.batch_size, scheme)
+
+		LOGGER.info(f"Merged MBTiles '{args.output}' in {time.time() - t1:.2f}s!")
 
 	ovr_minzoom = None
 	if args.overview:
-		LOGGER.info(f"Create overview MBTiles '{args.output}'...")
+		LOGGER.info(f"Creating overview MBTiles '{args.output}'...")
 
-		ovr_minzoom = create_overview(conn, cur, args.resampling, args.compression, args.batch_size)
+		t2 = time.time()
+
+		ovr_minzoom = create_overview(conn, cur, args.resampling, args.compression, workers, args.batch_size, scheme)
+
+		LOGGER.info(f"Created overview MBTiles '{args.output}' in {time.time() - t2:.2f}s!")
 
 	if args.extra_info:
-		LOGGER.info(f"Update MBTiles hash and created '{args.output}'...")
+		LOGGER.info(f"Updating MBTiles hash and created '{args.output}'...")
+
+		t3 = time.time()
 
 		update_hash_and_created(conn, cur, args.batch_size)
 
-	LOGGER.info(f"Update MBTiles metadata '{args.output}'...")
+		LOGGER.info(f"Updated MBTiles hash and created '{args.output}' in {time.time() - t3:.2f}s!")
 
-	update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom)
+	LOGGER.info(f"Updating MBTiles metadata '{args.output}'...")
+
+	update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme)
 
 	conn.close()
 

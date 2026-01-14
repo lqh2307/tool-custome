@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
-	LOGGER.info(f"Convert DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF '{args.input}' -> '{args.output}'...")
+	LOGGER.info(f"Converting DEM GeoTIFF to RGB (Terrain-RGB) GeoTIFF '{args.input}' -> '{args.output}'...")
 
 	t0 = time.time()
 

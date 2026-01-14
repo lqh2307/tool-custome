@@ -125,7 +125,7 @@ if __name__ == "__main__":
 			else:
 				yield (tile_name, dir_name, args.output, args.compression)
 
-	LOGGER.info(f"Get elevation tiles with BBox: {args.bbox}")
+	LOGGER.info(f"Downloading elevation tiles with BBox: {args.bbox}")
 
 	t0 = time.time()
 
