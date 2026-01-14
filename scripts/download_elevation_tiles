@@ -109,7 +109,7 @@ if __name__ == "__main__":
 	try:
 		bbox = parse_bounds(args.bbox)
 	except ValueError as e:
-		raise ValueError(f"Invalid BBox coordinates: ${e}")
+		raise ValueError(f"Invalid BBox coordinates: {e}")
 
 	# Force
 	if args.force and args.output.exists():

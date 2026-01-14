@@ -312,6 +312,12 @@ def build_parent_tile(args):
 	return p_x, p_y, out.getvalue()
 
 
+def hash_tile(args):
+	z, x, y, tile_data = args
+
+	return z, x, y, hashlib.md5(tile_data).hexdigest()
+
+
 def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, batch_size, scheme="tms"):
 	insert_query = None
 	select_query = None
@@ -356,8 +362,6 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 
 		cur.execute("ATTACH DATABASE ? AS src;", (str(inputs[idx]),))
 
-		conn.execute("BEGIN;")
-
 		if select_query:
 			if tile_format == "pbf":
 				raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
@@ -381,6 +385,8 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 				else:
 					pool = None
 
+				conn.execute("BEGIN;")
+
 				try:
 					while True:
 						cur.execute(select_query, (last_rowid, batch_size))
@@ -402,10 +408,14 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 					if pool:
 						pool.close()
 						pool.join()
+
+				conn.execute("COMMIT;")
 		else:
+			conn.execute("BEGIN;")
+
 			cur.execute(insert_query)
 
-		conn.execute("COMMIT;")
+			conn.execute("COMMIT;")
 
 		cur.execute("DETACH DATABASE src;")
 
@@ -538,25 +548,25 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 			"subsampling": 2,
 		})
 
+	if workers > 1:
+		pool = Pool(workers)
+	else:
+		pool = None
+
 	conn.execute("BEGIN;")
 
-	while maxzoom > 0:
-		created_tiles = 0
+	try:
+		while maxzoom > 0:
+			created_tiles = 0
 
-		child_zoom = maxzoom
-		parent_zoom = maxzoom - 1
+			child_zoom = maxzoom
+			parent_zoom = maxzoom - 1
 
-		last_p_x = -1
-		last_p_y = -1
+			last_p_x = -1
+			last_p_y = -1
 
-		LOGGER.info(f"Creating zoom - {parent_zoom}...")
+			LOGGER.info(f"Creating zoom - {parent_zoom}...")
 
-		if workers > 1:
-			pool = Pool(workers)
-		else:
-			pool = None
-
-		try:
 			while True:
 				tasks = []
 
@@ -592,15 +602,15 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 						created_tiles += 1
 
 				last_p_x, last_p_y = parents[-1]
-		finally:
-			if pool:
-				pool.close()
-				pool.join()
 
-		maxzoom = parent_zoom
+			maxzoom = parent_zoom
 
-		if created_tiles <= 1:
-			break
+			if created_tiles <= 1:
+				break
+	finally:
+		if pool:
+			pool.close()
+			pool.join()
 
 	conn.execute("COMMIT;")
 
@@ -632,19 +642,32 @@ def update_hash_and_created(conn, cur, batch_size):
 
 	last_rowid = 0
 
+	if workers > 1:
+		pool = Pool(workers)
+	else:
+		pool = None
+
 	conn.execute("BEGIN;")
 
-	while True:
-		cur.execute(select_query, (last_rowid, batch_size))
+	try:
+		while True:
+			cur.execute(select_query, (last_rowid, batch_size))
+			rows = cur.fetchall()
+			if not rows:
+				break
 
-		rows = cur.fetchall()
-		if not rows:
-			break
-
-		for _, z, x, y, tile_data in rows:
-			cur.execute(update_query, (hashlib.md5(tile_data).hexdigest(), created, z, x, y))
-
-		last_rowid = rows[-1][0]
+			if pool:
+				for z, x, y, md5 in pool.imap_unordered(hash_tile, [(z, x, y, tile_data) for _, z, x, y, tile_data in rows]):
+					cur.execute(update_query, (md5, created, z, x, y))
+			else:
+				for _, z, x, y, tile_data in rows:
+					cur.execute(update_query, (hashlib.md5(tile_data).hexdigest(), created, z, x, y))
+			
+			last_rowid = rows[-1][0]
+	finally:
+		if pool:
+			pool.close()
+			pool.join()
 
 	conn.execute("COMMIT;")
 
@@ -685,7 +708,7 @@ if __name__ == "__main__":
 		try:
 			bbox = parse_bounds(args.bbox)
 		except ValueError as e:
-			raise ValueError(f"Invalid BBox coordinates: ${e}")
+			raise ValueError(f"Invalid BBox coordinates: {e}")
 
 	# Parse and validate metadata json
 	metadata_json = None
