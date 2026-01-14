@@ -215,13 +215,15 @@ def get_mbtiles_format_from_tiles(cur):
 		return "pbf"
 
 
-def get_mbtiles_tile_size_from_tiles(cur):
+def get_mbtiles_tile_info_from_tiles(cur):
 	cur.execute("SELECT tile_data FROM tiles LIMIT 1;")
 	row = cur.fetchone()
 	if not row:
-		return None
+		return None, None
 
-	return Image.open(io.BytesIO(row[0])).width
+	image = Image.open(io.BytesIO(row[0]))
+
+	return image.width, image.mode == "RGBA"
 
 
 def connect(file_path):
@@ -272,12 +274,18 @@ def create_unique_indexes(cur, metadata_index, tiles_index):
 def composite_image(args):
 	z, x, y, new_data, old_data, save_args = args
 
-	if not old_data:
-		return z, x, y, new_data
+	new_img = Image.open(io.BytesIO(new_data))
 
 	out = io.BytesIO()
 
-	Image.alpha_composite(Image.open(io.BytesIO(old_data)), Image.open(io.BytesIO(new_data))).save(out, **save_args)
+	if not old_data:
+		new_img.save(out, **save_args)
+
+		return z, x, y, out.getvalue()
+	else:
+		old_img = Image.open(io.BytesIO(old_data))
+
+		(Image.alpha_composite(old_img, new_img) if old_img.mode == "RGBA" else old_img.paste(new_img)).save(out, **save_args)
 
 	return z, x, y, out.getvalue()
 
@@ -316,7 +324,9 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 
 			continue
 
-		format = get_mbtiles_format_from_tiles(src_cur)
+		tile_format = get_mbtiles_format_from_tiles(src_cur)
+		if tile_format is None:
+			continue
 
 		src_conn.close()
 
@@ -327,15 +337,22 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 		conn.execute("BEGIN;")
 
 		if select_query:
-			if format == "png" or format == "webp":
+			if tile_format == "pbf":
+				raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
+			else:
 				save_args = {
-					"format": format,
+					"format": tile_format,
+					"optimize": True,
+					"lossless": True,
+					"quality": 100,
 				}
 
-				if format == "png" and compression:
-					save_args["compress_level"] = 9
-				else:
-					save_args["quality"] = 100
+				if compression:
+					save_args.update({
+						"compress_level": 9,
+						"method": 6,
+						"subsampling": 2,
+					})
 
 				# ========= SINGLE PROCESS =========
 				if workers == 1:
@@ -369,8 +386,6 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 					finally:
 						pool.close()
 						pool.join()
-			else:
-				raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{format}'")
 		else:
 			cur.execute(insert_query)
 
@@ -462,13 +477,14 @@ def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
 	conn.execute("COMMIT;")
 
 
-def create_overview(conn, cur, resampling, batch_size):
-	format = get_mbtiles_format_from_tiles(cur)
-	if format is None or format == "pbf":
+# Create MBTiles overview
+def create_overview(conn, cur, resampling, compression, batch_size):
+	tile_format = get_mbtiles_format_from_tiles(cur)
+	if tile_format is None or tile_format == "pbf":
 		return None
 
-	width = get_mbtiles_tile_size_from_tiles(cur)
-	if width is None:
+	tile_size, has_alpha = get_mbtiles_tile_info_from_tiles(cur)
+	if tile_size is None or has_alpha is None:
 		return None
 
 	maxzoom = get_mbtiles_zoom_level_from_tiles(cur, False)
@@ -476,72 +492,99 @@ def create_overview(conn, cur, resampling, batch_size):
 		return None
 
 	insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-	select_children_query = "SELECT tile_column, tile_row, tile_data FROM tiles WHERE zoom_level = ? AND tile_column BETWEEN ? AND ? AND tile_row BETWEEN ? AND ?;"
-	select_tile_range_query = "SELECT MIN (tile_column), MIN (tile_row), MAX (tile_column), MAX (tile_row) FROM tiles WHERE zoom_level = ?;"
+	select_c_query = "SELECT rowid, zoom_level, tile_column, tile_row FROM tiles WHERE zoom_level = ? AND rowid > ? ORDER BY rowid LIMIT ?;"
+	select_c_range_query = "SELECT tile_column, tile_row, tile_data FROM tiles WHERE zoom_level = ? AND tile_column BETWEEN ? AND ? AND tile_row BETWEEN ? AND ?;"
 
-	def is_fully_transparent(img):
-		if img.mode == "RGBA":
-			return img.getchannel("A").getextrema() == (0, 0)
+	if resampling == "nearest":
+		resampling = Image.NEAREST
+	elif resampling == "bilinear":
+		resampling = Image.BILINEAR
+	elif resampling == "bicubic":
+		resampling = Image.BICUBIC
+	else:
+		resampling = Image.LANCZOS
 
-		return False
+	save_args = {
+		"format": tile_format,
+		"optimize": True,
+		"lossless": True,
+		"quality": 100,
+	}
+	if compression:
+		save_args.update({
+			"compress_level": 9,
+			"method": 6,
+			"subsampling": 2,
+		})
 
-	z = maxzoom
+	background_args = (
+		"RGBA",
+		(tile_size * 2, tile_size * 2),
+		(255, 255, 255, 0)) if has_alpha else ("RGB", (tile_size * 2, tile_size * 2), (255, 255, 255),
+	)
+	resize_args = (
+		(tile_size, tile_size),
+		resampling,
+	)
 
-	while z > 0:
-		LOGGER.info(f"Creating overview z={z-1}...")
+	conn.execute("BEGIN;")
 
-		cur.execute(select_tile_range_query, (z,))
-		row = cur.fetchone()
-		if not row:
+	while maxzoom > 0:
+		last_rowid = 0
+
+		cur.execute(select_c_query, (maxzoom, last_rowid, batch_size))
+		rows = cur.fetchall()
+		if not rows:
 			break
 
-		conn.execute("BEGIN;")
+		maxzoom = maxzoom - 1
 
-		x_min, y_min, x_max, y_max = row
+		LOGGER.info(f"Creating overview z={maxzoom}...")
 
-		for x in range(x_min // 2, x_max // 2 + 1):
-			for y in range(y_min // 2, y_max // 2 + 1):
-				minX = x * 2
-				maxX = minX + 1
-				minY = y * 2
-				maxY = minY + 1
+		for rowid, c_z, c_x, c_y in rows:
+			p_x = c_x // 2
+			p_y = c_y // 2
 
-				cur.execute(select_children_query, (z, minX, maxX, minY, maxY))
+			min_c_x = p_x * 2
+			max_c_x = min_c_x + 1
+			min_c_y = p_y * 2
+			max_c_y = min_c_y + 1
 
-				children = cur.fetchall()
-				if not children:
-					continue
+			cur.execute(select_c_range_query, (c_z, min_c_x, max_c_x, min_c_y, max_c_y))
 
-				canvas = Image.new("RGBA", (width * 2, width * 2), (0, 0, 0, 0))
+			childrens = cur.fetchall()
+			if not childrens:
+				continue
 
-				for cx, cy, data in children:
-					if not data:
+			canvas = Image.new(*background_args)
+
+			for cx, cy, cdata in childrens:
+				d = (
+					(cx - min_c_x) * tile_size,
+					(max_c_y - cy) * tile_size,	# TMS flip Y
+				)
+				image = Image.open(io.BytesIO(cdata))
+
+				if has_alpha:
+					# Skip fully transparent
+					if image.getchannel("A").getextrema() == (0, 0):
 						continue
 
-					tile_img = Image.open(io.BytesIO(data)).convert("RGBA")
-
-					dx = (cx - minX) * width
-					dy = (maxY - cy) * width	# TMS flip Y
-
-					canvas.alpha_composite(tile_img, (dx, dy))
-
-				# Resize back to 1 tile
-				canvas = canvas.resize((width, width), resampling)
-
-				# Skip fully transparent
-				if is_fully_transparent(canvas):
-					continue
+					canvas.alpha_composite(image, d)
+				else:
+					canvas.paste(image, d)
 
 				out = io.BytesIO()
-				canvas.save(out, format=format, compress_level=9)
 
-				cur.execute(insert_query, (z - 1, x, y, out.getvalue()))
+				canvas.resize(*resize_args).save(out, **save_args)
 
-		conn.execute("COMMIT;")
+				cur.execute(insert_query, (maxzoom, p_x, p_y, out.getvalue()))
 
-		z -= 1
+		last_rowid = rowid
 
-	return z
+	conn.execute("COMMIT;")
+
+	return maxzoom
 
 
 def update_hash_and_created(conn, cur, batch_size):
@@ -611,7 +654,7 @@ if __name__ == "__main__":
 	parser.add_argument("-ms", "--merge-strategy", required=False, choices=["overwrite", "keep", "merge"], default="overwrite", help="Merge strategy")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression tile for output MBTiles")
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
-	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "average", "rms", "gauss", "bilinear", "cubic", "cubicspline", "lanczos", "average_magphase", "mode"], default="nearest", help="Resampling method to create overview")
+	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to create overview")
 	parser.add_argument("-b", "--bbox", required=False, type=str, help="Only merge tiles covered by bounding box coordinates in the format 'minX,minY,maxX,maxY'")
 
 	args = parser.parse_args()
@@ -655,7 +698,7 @@ if __name__ == "__main__":
 	if args.overview:
 		LOGGER.info(f"Create overview MBTiles '{args.output}'...")
 
-		ovr_minzoom = create_overview(conn, cur, args.resampling, args.batch_size)
+		ovr_minzoom = create_overview(conn, cur, args.resampling, args.compression, args.batch_size)
 
 	if args.extra_info:
 		LOGGER.info(f"Update MBTiles hash and created '{args.output}'...")
