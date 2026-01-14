@@ -13,7 +13,6 @@ import math
 import json
 import sys
 import io
-import os
 
 
 # ========= LOGS =========
@@ -334,7 +333,7 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 				raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
 			else:
 				save_args = {
-					"format": tile_format,
+					"format": tile_format.upper(),
 					"optimize": True,
 					"lossless": True,
 					"quality": 100,
@@ -475,6 +474,8 @@ def create_overview(conn, cur, resampling, compression, batch_size):
 	tile_format = get_mbtiles_format_from_tiles(cur)
 	if tile_format is None or tile_format == "pbf":
 		return None
+	elif tile_format == "pbf":
+		raise ValueError(f"Overview is not support with format '{tile_format}'")
 
 	tile_size, has_alpha = get_mbtiles_tile_info_from_tiles(cur)
 	if tile_size is None or has_alpha is None:
@@ -498,7 +499,7 @@ def create_overview(conn, cur, resampling, compression, batch_size):
 		resampling = Image.LANCZOS
 
 	save_args = {
-		"format": tile_format,
+		"format": tile_format.upper(),
 		"optimize": True,
 		"lossless": True,
 		"quality": 100,
