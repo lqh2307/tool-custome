@@ -11,7 +11,7 @@ NUM_THREADS=ALL_CPUS GDAL_NUM_THREADS=ALL_CPUS gdal_translate -expand rgba -co B
 NUM_THREADS=ALL_CPUS gdal_translate -r lanczos -co TILE_FORMAT=PNG -co ZLEVEL=9
 NUM_THREADS=ALL_CPUS GDAL_NUM_THREADS=ALL_CPUS gdaladdo -r lanczos
 
-extract_mbtiles -o data/merged.mbtiles -i data/NC-48_1.mbtiles data/NC-48_2.mbtiles data/NC-48_3.mbtiles data/NC-48_4.mbtiles -ms merge -ovr -w 8 -ei
+extract_mbtiles -o data/merged.mbtiles -i data/NC-48_1.mbtiles data/NC-48_2.mbtiles data/NC-48_3.mbtiles data/NC-48_4.mbtiles -ms merge -ovr -w 8 -ei -r lanczos -c -mi -ti -bz 1000
 
 download_elevation_tiles -b 96,4,120,28 -w 8 -o srmt
 

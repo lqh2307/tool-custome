@@ -48,7 +48,7 @@ if __name__ == "__main__":
 			sys.exit(0)
 		))
 
-	parser = argparse.ArgumentParser(description="Decode RGB (Terrain-RGB) GeoTIFF to DEM")
+	parser = argparse.ArgumentParser(description="Convert RGB (Terrain-RGB) GeoTIFF to DEM")
 	parser.add_argument("-in", "--input", required=True, type=Path, help="Input RGB GeoTIFF")
 	parser.add_argument("-out", "--output", required=True, type=Path, help="Output DEM GeoTIFF")
 	parser.add_argument("-b", "--base-val", required=False, type=float, default=-10000, help="Base value")
@@ -58,7 +58,7 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
-	LOGGER.info(f"Decode RGB (Terrain-RGB) GeoTIFF to DEM '{args.input}' -> '{args.output}'...")
+	LOGGER.info(f"Converting RGB (Terrain-RGB) GeoTIFF to DEM '{args.input}' -> '{args.output}'...")
 
 	t0 = time.time()
 

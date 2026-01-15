@@ -109,7 +109,7 @@ if __name__ == "__main__":
 	try:
 		bbox = parse_bounds(args.bbox)
 	except ValueError as e:
-		raise ValueError(f"Invalid BBox coordinates: ${e}")
+		raise ValueError(f"Invalid BBox coordinates: {e}")
 
 	# Force
 	if args.force and args.output.exists():
@@ -125,7 +125,7 @@ if __name__ == "__main__":
 			else:
 				yield (tile_name, dir_name, args.output, args.compression)
 
-	LOGGER.info(f"Get elevation tiles with BBox: {args.bbox}")
+	LOGGER.info(f"Downloading elevation tiles with BBox: {args.bbox}")
 
 	t0 = time.time()
 
