@@ -378,6 +378,8 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 
 			cur.execute("ATTACH DATABASE ? AS src;", (str(inputs[idx]),))
 
+			conn.execute("BEGIN;")
+
 			if select_query:
 				if tile_format == "pbf":
 					raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
@@ -395,8 +397,6 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 							"subsampling": 2,
 						})
 
-					conn.execute("BEGIN;")
-
 					while True:
 						cur.execute(select_query, (last_rowid, batch_size))
 						rows = cur.fetchall()
@@ -411,14 +411,10 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 								cur.execute(insert_query, composite_tile((z, x, y, new_data, old_data, save_args)))
 
 						last_rowid = rows[-1][0]
-
-					conn.execute("COMMIT;")
 			else:
-				conn.execute("BEGIN;")
-
 				cur.execute(insert_query)
 
-				conn.execute("COMMIT;")
+			conn.execute("COMMIT;")
 
 			cur.execute("DETACH DATABASE src;")
 	finally:
