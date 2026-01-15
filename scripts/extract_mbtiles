@@ -281,7 +281,7 @@ def composite_tile(args):
 	if old_data:
 		img = Image.alpha_composite(Image.open(io.BytesIO(old_data)).convert("RGBA"), Image.open(io.BytesIO(new_data)).convert("RGBA"))
 	else:
-		img = Image.open(io.BytesIO(old_data)).convert("RGBA")
+		img = Image.open(io.BytesIO(new_data)).convert("RGBA")
 
 	img.save(out, **save_args)
 
