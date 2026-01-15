@@ -276,13 +276,14 @@ def composite_tile(args):
 	z, x, y, new_data, old_data, save_args = args
 
 	out = io.BytesIO()
+	img = None
 
-	new_img = Image.open(io.BytesIO(new_data)).convert("RGBA")
-
-	if not old_data:
-		new_img.save(out, **save_args)
+	if old_data:
+		img = Image.alpha_composite(Image.open(io.BytesIO(old_data)).convert("RGBA"), Image.open(io.BytesIO(new_data)).convert("RGBA"))
 	else:
-		Image.alpha_composite(Image.open(io.BytesIO(old_data)).convert("RGBA"), new_img).save(out, **save_args)
+		img = Image.open(io.BytesIO(old_data)).convert("RGBA")
+
+	img.save(out, **save_args)
 
 	return z, x, y, out.getvalue()
 
@@ -307,14 +308,9 @@ def build_parent_tile(args):
 
 	out = io.BytesIO()
 
-	canvas = canvas.resize(*build_args["resize_args"])
+	canvas.resize(*build_args["resize_args"]).save(out, **build_args["save_args"])
 
-	if canvas.getchannel("A").getextrema() == (0, 0):
-		return None
-	else:
-		canvas.save(out, **build_args["save_args"])
-
-		return p_zoom, p_x, p_y, out.getvalue()
+	return p_zoom, p_x, p_y, out.getvalue()
 
 
 def hash_tile(args):
@@ -344,8 +340,6 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 
 	try:
 		for idx, path in enumerate(inputs):
-			last_rowid = 0
-
 			bounds = None
 			tile_format = None
 
@@ -401,6 +395,8 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 							"method": 6,
 							"subsampling": 2,
 						})
+
+					last_rowid = 0
 
 					while True:
 						cur.execute(select_query, (last_rowid, batch_size))
@@ -610,19 +606,12 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 
 				if pool:
 					for data in pool.imap_unordered(build_parent_tile, tasks):
-						if data is None:
-							continue
-
 						cur.execute(insert_query, data)
 
 						created_tiles += 1
 				else:
 					for task in tasks:
-						data = build_parent_tile(task)
-						if data is None:
-							continue
-
-						cur.execute(insert_query, data)
+						cur.execute(insert_query, build_parent_tile(task))
 
 						created_tiles += 1
 
