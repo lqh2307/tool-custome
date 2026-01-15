@@ -307,9 +307,14 @@ def build_parent_tile(args):
 
 	out = io.BytesIO()
 
-	canvas.resize(*build_args["resize_args"]).save(out, **build_args["save_args"])
+	canvas = canvas.resize(*build_args["resize_args"])
 
-	return p_zoom, p_x, p_y, out.getvalue()
+	if canvas.getchannel("A").getextrema() == (0, 0):
+		return None
+	else:
+		canvas.save(out, **build_args["save_args"])
+
+		return p_zoom, p_x, p_y, out.getvalue()
 
 
 def hash_tile(args):
@@ -605,12 +610,19 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 
 				if pool:
 					for data in pool.imap_unordered(build_parent_tile, tasks):
+						if data is None:
+							continue
+
 						cur.execute(insert_query, data)
 
 						created_tiles += 1
 				else:
 					for task in tasks:
-						cur.execute(insert_query, build_parent_tile(task))
+						data = build_parent_tile(task)
+						if data is None:
+							continue
+
+						cur.execute(insert_query, data)
 
 						created_tiles += 1
 
