@@ -23,11 +23,9 @@ LOGGER.setLevel(logging.INFO)
 
 # ========= ENCODE =========
 def data_to_rgb(args):
-	data, base_val, interval = args
+	data, convert_args = args
 
-	data = data.astype(numpy.float64, copy=False)
-
-	data = (data - base_val) / interval
+	data = (data.astype(numpy.float64, copy=False) - convert_args["base_val"]) / convert_args["interval"]
 
 	data_range = data.max() - data.min()
 	if data.max() - data.min() > 256 ** 3:
@@ -103,19 +101,20 @@ if __name__ == "__main__":
 		with rasterio.open(args.output, "w", **profile) as dst:
 			workers = max(1, args.workers)
 
+			convert_args = {
+				"base_val": args.base_val,
+				"interval": args.interval,
+			}
+
 			# ========= SINGLE PROCESS =========
 			if workers == 1:
 				for w in window_generator():
-					dst.write(data_to_rgb(src.read(1, window=w), args.base_val, args.interval), window=w)
+					dst.write(data_to_rgb(src.read(1, window=w), convert_args), window=w)
 			# ========= MULTI PROCESS =========
 			else:
 				def task_gen():
 					for w in window_generator():
-						yield (
-							src.read(1, window=w),
-							args.base_val,
-							args.interval,
-						)
+						yield (src.read(1, window=w), convert_args)
 
 				with Pool(workers) as pool:
 					for w, rgb in zip(window_generator(), pool.imap(data_to_rgb, task_gen(), chunksize=1)):

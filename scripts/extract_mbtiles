@@ -288,9 +288,9 @@ def composite_tile(args):
 
 
 def build_parent_tile(args):
-	p_zoom, p_x, p_y, childrens, tile_size, save_args, is_fip, resampling = args
+	p_zoom, p_x, p_y, childrens, build_args = args
 
-	canvas = Image.new("RGBA", (tile_size * 2, tile_size * 2), (255, 255, 255, 0))
+	canvas = Image.new(*build_args["background_args"])
 
 	min_c_x = p_x * 2
 	min_c_y = p_y * 2
@@ -300,14 +300,14 @@ def build_parent_tile(args):
 		canvas.alpha_composite(
 			Image.open(io.BytesIO(cdata)).convert("RGBA"),
 			(
-				(cx - min_c_x) * tile_size,
-				(cy - min_c_y if is_fip else max_c_y - cy) * tile_size,
+				(cx - min_c_x) * build_args["tile_size"],
+				(cy - min_c_y if build_args["is_fip"] else max_c_y - cy) * build_args["tile_size"],
 			)
 		)
 
 	out = io.BytesIO()
 
-	canvas.resize((tile_size, tile_size), resampling).save(out, **save_args)
+	canvas.resize(*build_args["resize_args"]).save(out, **build_args["save_args"])
 
 	return p_zoom, p_x, p_y, out.getvalue()
 
@@ -318,7 +318,7 @@ def hash_tile(args):
 	return hashlib.md5(tile_data).hexdigest(), created, z, x, y
 
 
-def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers, batch_size, scheme="tms"):
+def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, workers, batch_size, scheme="tms"):
 	insert_query = None
 	select_query = None
 	if merge_strategy == "overwrite":
@@ -347,7 +347,7 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 		else:
 			bounds = get_mbtiles_bounds_from_tiles(src_cur, scheme)
 
-		if bbox and get_intersect_bbox(bbox, bounds) is None:
+		if merge_bbox and get_intersect_bbox(merge_bbox, bounds) is None:
 			LOGGER.info(f"Skipping MBTiles '{path}' - {idx + 1}...")
 
 			continue
@@ -417,7 +417,7 @@ def merge_mbtiles(conn, cur, inputs, bbox, merge_strategy, compression, workers,
 
 		cur.execute("DETACH DATABASE src;")
 
-	return get_intersect_bbox(bbox, final_bounds)
+	return get_intersect_bbox(merge_bbox, final_bounds)
 
 
 def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme="tms"):
@@ -513,14 +513,20 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 	if tile_size is None:
 		return None
 
-	maxzoom = get_mbtiles_zoom_level_from_tiles(cur, False)
-	if maxzoom is None:
-		return None
-
 	is_fip = None
+	maxzoom = None
+
 	metadatas = get_mbtiles_metadatas(cur)
-	if metadatas and "scheme" in metadatas:
-		is_fip = metadatas["scheme"] != scheme
+	if metadatas:
+		if "scheme" in metadatas:
+			is_fip = metadatas["scheme"] != scheme
+		if "maxzoom" in metadatas:
+			maxzoom = int(metadatas["maxzoom"])
+
+	if maxzoom is None:
+		maxzoom = get_mbtiles_zoom_level_from_tiles(cur, False)
+		if maxzoom is None:
+			return None
 
 	insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
 	select_p_query = "SELECT DISTINCT tile_column / 2 as p_x, tile_row / 2 as p_y FROM tiles WHERE zoom_level = ? AND (tile_column / 2 > ? OR (tile_column / 2 = ? AND tile_row / 2 > ?)) ORDER BY p_x, p_y LIMIT ?;"
@@ -535,14 +541,21 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 	else:
 		resampling = Image.LANCZOS
 
-	save_args = {
-		"format": tile_format.upper(),
-		"optimize": True,
-		"lossless": True,
-		"quality": 100,
+	build_args = {
+		"save_args": {
+			"format": tile_format.upper(),
+			"optimize": True,
+			"lossless": True,
+			"quality": 100,
+		},
+		"is_flip": is_fip,
+		"resampling": resampling,
+		"tile_size": tile_size,
+		"background_args": ("RGBA", (tile_size * 2, tile_size * 2), (255, 255, 255, 0)),
+		"resize_args": ((tile_size, tile_size), resampling),
 	}
 	if compression:
-		save_args.update({
+		build_args["save_args"].update({
 			"compress_level": 9,
 			"method": 6,
 			"subsampling": 2,
@@ -586,7 +599,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 					if not childrens:
 						continue
 
-					tasks.append((p_zoom, p_x, p_y, childrens, tile_size, save_args, is_fip, resampling))
+					tasks.append((p_zoom, p_x, p_y, childrens, build_args))
 
 				if pool:
 					for data in pool.imap_unordered(build_parent_tile, tasks):
@@ -660,7 +673,7 @@ def update_hash_and_created(conn, cur, batch_size):
 			else:
 				for _, z, x, y, tile_data in rows:
 					cur.execute(update_query, hash_tile((z, x, y, tile_data, created)))
-			
+
 			last_rowid = rows[-1][0]
 	finally:
 		if pool:
@@ -696,15 +709,15 @@ if __name__ == "__main__":
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression tile for output MBTiles")
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
 	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to create overview")
-	parser.add_argument("-b", "--bbox", required=False, type=str, help="Only merge tiles covered by bounding box coordinates in the format 'minX,minY,maxX,maxY'")
+	parser.add_argument("-mb", "--merge_bbox", required=False, type=str, help="Only merge tiles covered by bounding box coordinates in the format 'minX,minY,maxX,maxY'")
 
 	args = parser.parse_args()
 
 	# Parse and validate bbox
-	bbox = None
-	if args.bbox:
+	merge_bbox = None
+	if args.merge_bbox:
 		try:
-			bbox = parse_bounds(args.bbox)
+			merge_bbox = parse_bounds(args.merge_bbox)
 		except ValueError as e:
 			raise ValueError(f"Invalid BBox coordinates: {e}")
 
@@ -741,7 +754,7 @@ if __name__ == "__main__":
 
 		t1 = time.time()
 
-		merge_bounds = merge_mbtiles(conn, cur, args.inputs, bbox, args.merge_strategy, args.compression, workers, args.batch_size, scheme)
+		merge_bounds = merge_mbtiles(conn, cur, args.inputs, merge_bbox, args.merge_strategy, args.compression, workers, args.batch_size, scheme)
 
 		LOGGER.info(f"Merged MBTiles '{args.output}' in {time.time() - t1:.2f}s!")
 

@@ -58,9 +58,9 @@ def get_tiles_from_bbox(bbox):
 
 
 def download_tile(args):
-	dir_name, tile_name, output, compression = args
+	dir_name, tile_name, download_args = args
 
-	tile_path = output/dir_name/tile_name
+	tile_path = download_args["output"]/dir_name/tile_name
 
 	url = f"https://elevation-tiles-prod.s3.us-east-1.amazonaws.com/skadi/{dir_name}/{tile_name}.gz"
 
@@ -70,7 +70,7 @@ def download_tile(args):
 		with request.urlopen(url, timeout=30) as res:
 			tile_path.parent.mkdir(parents=True, exist_ok=True)
 
-			if compression:
+			if download_args["compression"]:
 				with open(tile_path.with_suffix(".gz"), "wb") as f:
 					f.write(res.read())
 			else:
@@ -117,21 +117,42 @@ if __name__ == "__main__":
 
 		shutil.rmtree(args.output)
 
+	download_args = {
+		"output": args.output,
+		"compression": args.compression,
+	}
+
+	total_downloaded = 0
+
 	# ========= TILE GENERATOR =========
 	def tile_generator():
 		for tile_name, dir_name in get_tiles_from_bbox(bbox):
 			if not args.force and (args.output / dir_name / tile_name).exists():
 				continue
 			else:
-				yield (tile_name, dir_name, args.output, args.compression)
+				yield (tile_name, dir_name, download_args)
 
 	LOGGER.info(f"Downloading elevation tiles with BBox: {args.bbox}")
 
 	t0 = time.time()
 
-	# ========= ThreadPool download =========
-	total_downloaded = 0
-	for _ in ThreadPool(max(1, args.workers)).imap_unordered(download_tile, tile_generator()):
-		total_downloaded += 1
+	if args.workers > 1:
+		pool = ThreadPool(args.workers)
+	else:
+		pool = None
+
+	try:
+		if pool:
+			for _ in pool.imap_unordered(download_tile, tile_generator()):
+				total_downloaded += 1
+		else:
+			for data in tile_generator():
+				download_tile(data)
+
+				total_downloaded += 1
+	finally:
+		if pool:
+			pool.close()
+			pool.join()
 
 	LOGGER.info(f"Downloaded {total_downloaded} elevation tiles to '{args.output}' in {time.time() - t0:.2f}s!")
