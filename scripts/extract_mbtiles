@@ -339,12 +339,12 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 
 	try:
 		for idx, path in enumerate(inputs):
-			LOGGER.info(f"Merging '{path}' - {idx + 1}...")
-
 			last_rowid = 0
 
 			bounds = None
 			tile_format = None
+
+			LOGGER.info(f"Merging '{path}' - {idx + 1}...")
 
 			src_conn = sqlite3.connect(path)
 			src_cur = src_conn.cursor()
@@ -376,7 +376,7 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 
 			final_bounds = get_cover_bbox(final_bounds, bounds)
 
-			cur.execute("ATTACH DATABASE ? AS src;", (str(inputs[idx]),))
+			cur.execute("ATTACH DATABASE ? AS src;", (str(path),))
 
 			conn.execute("BEGIN;")
 
@@ -428,10 +428,9 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme="tms"):
 	final_metadata = {}
 
-	cur.execute("SELECT name, value FROM metadata;")
-	rows = cur.fetchall()
-	if rows:
-		final_metadata.update({ row[0]: row[1] for row in rows })
+	origin_metadatas = get_mbtiles_metadatas(cur)
+	if origin_metadatas:
+		final_metadata.update(origin_metadatas)
 
 	if merge_bounds:
 		if "bounds" in final_metadata:
@@ -464,9 +463,9 @@ def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme=
 		final_metadata["type"] = "overlay"
 
 	if "format" not in final_metadata:
-		format = get_mbtiles_format_from_tiles(cur)
-		if format is not None:
-			final_metadata["format"] = format
+		tile_format = get_mbtiles_format_from_tiles(cur)
+		if tile_format is not None:
+			final_metadata["format"] = tile_format
 
 	minzoom = None
 	if "minzoom" not in final_metadata:
@@ -490,11 +489,7 @@ def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme=
 
 	if "center" not in final_metadata:
 		if bounds and minzoom is not None and maxzoom is not None:
-			lon = (bounds[0] + bounds[2]) / 2
-			lat = (bounds[1] + bounds[3]) / 2
-			zoom = math.floor((minzoom + maxzoom) / 2)
-
-			final_metadata["center"] = encode_array([lon, lat, zoom])
+			final_metadata["center"] = encode_array([(bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2, math.floor((minzoom + maxzoom) / 2)])
 
 	insert_query = "INSERT INTO metadata (name, value) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value;"
 
