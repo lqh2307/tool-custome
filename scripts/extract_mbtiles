@@ -155,13 +155,17 @@ def get_intersect_bbox(bbox1, bbox2):
 
 
 # ========= MBTILES =========
-def get_mbtiles_metadatas(cur):
-	cur.execute("SELECT name, value FROM metadata;")
-	rows = cur.fetchall()
-	if not rows:
-		return None
-
-	return { name: value for name, value in rows }
+def get_mbtiles_metadatas(cur, name = None):
+	if name is not None:
+		cur.execute("SELECT name, value FROM metadata WHERE name = ?;", (name,))
+		row = cur.fetchone()
+		if row:
+			return { row[0]: row[1] }
+	else:
+		cur.execute("SELECT name, value FROM metadata;")
+		rows = cur.fetchall()
+		if rows:
+			return { name: value for name, value in rows }
 
 
 def get_mbtiles_bounds_from_tiles(cur, scheme="tms"):
@@ -227,7 +231,7 @@ def get_mbtiles_tile_size_from_tiles(cur):
 	return Image.open(io.BytesIO(row[0])).width
 
 
-def connect(file_path):
+def connect(file_path, ensure_schema):
 	conn = sqlite3.connect(file_path)
 	cur = conn.cursor()
 
@@ -237,8 +241,9 @@ def connect(file_path):
 	cur.execute("PRAGMA encoding = 'UTF-8';")
 	cur.execute("PRAGMA page_size = 65536;")
 
-	cur.execute("CREATE TABLE IF NOT EXISTS metadata (name TEXT NOT NULL, value TEXT NOT NULL, UNIQUE (name));")
-	cur.execute("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL, tile_row INTEGER NOT NULL, tile_data BLOB NOT NULL, UNIQUE (zoom_level, tile_column, tile_row));")
+	if ensure_schema:
+		cur.execute("CREATE TABLE IF NOT EXISTS metadata (name TEXT NOT NULL, value TEXT NOT NULL, UNIQUE (name));")
+		cur.execute("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL, tile_row INTEGER NOT NULL, tile_data BLOB NOT NULL, UNIQUE (zoom_level, tile_column, tile_row));")
 
 	return conn, cur
 
@@ -276,24 +281,25 @@ def composite_tile(args):
 	z, x, y, new_data, old_data, save_args = args
 
 	out = io.BytesIO()
-	img = None
+
+	new_img = Image.open(io.BytesIO(new_data)).convert("RGBA")
 
 	if old_data:
-		img = Image.alpha_composite(Image.open(io.BytesIO(old_data)).convert("RGBA"), Image.open(io.BytesIO(new_data)).convert("RGBA"))
+		Image.alpha_composite(Image.open(io.BytesIO(old_data)).convert("RGBA"), new_img).save(out, **save_args)
 	else:
-		img = Image.open(io.BytesIO(new_data)).convert("RGBA")
-
-	img.save(out, **save_args)
+		new_img.save(out, **save_args)
 
 	return z, x, y, out.getvalue()
 
 
 def build_parent_tile(args):
-	p_zoom, p_x, p_y, childrens, build_args = args
+	p_z, p_x, p_y, childrens, build_args = args
 
 	min_c_x = p_x * 2
 	min_c_y = p_y * 2
 	max_c_y = min_c_y + 1
+
+	out = io.BytesIO()
 
 	canvas = Image.new(*build_args["background_args"])
 
@@ -306,11 +312,9 @@ def build_parent_tile(args):
 			)
 		)
 
-	out = io.BytesIO()
-
 	canvas.resize(*build_args["resize_args"]).save(out, **build_args["save_args"])
 
-	return p_zoom, p_x, p_y, out.getvalue()
+	return p_z, p_x, p_y, out.getvalue()
 
 
 def hash_tile(args):
@@ -319,7 +323,7 @@ def hash_tile(args):
 	return hashlib.md5(tile_data).hexdigest(), created, z, x, y
 
 
-def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, workers, batch_size, scheme="tms"):
+def merge_mbtiles(conn, cur, inputs, merge_strategy, merge_delete, compression, workers, batch_size, metadata_json):
 	insert_query = None
 	select_query = None
 	if merge_strategy == "overwrite":
@@ -331,6 +335,19 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
 
 	final_bounds = None
+	limit_bounds = None
+	tile_format = "png"
+	scheme = "tms"
+
+	if metadata_json:
+		if "bounds" in metadata_json:
+			limit_bounds = parse_bounds(metadata_json["bounds"])
+
+		if "format" in metadata_json:
+			tile_format = metadata_json["format"]
+
+		if "scheme" in metadata_json:
+			scheme = metadata_json["scheme"]
 
 	# Create workers
 	if workers > 1:
@@ -340,40 +357,30 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 
 	try:
 		for idx, path in enumerate(inputs):
-			bounds = None
-			tile_format = None
-
 			LOGGER.info(f"Merging '{path}' - {idx + 1}...")
 
-			src_conn = sqlite3.connect(path)
+			src_conn = sqlite3.connect(path, False)
 			src_cur = src_conn.cursor()
 
-			src_metadatas = get_mbtiles_metadatas(src_cur)
-			if src_metadatas:
-				if "bounds" in src_metadatas:
-					bounds = parse_bounds(src_metadatas["bounds"])
+			src_bounds = get_mbtiles_metadatas(src_cur, "bounds")
+			if src_bounds:
+				src_bounds = parse_bounds(src_bounds)
+			else:
+				src_bounds = get_mbtiles_bounds_from_tiles(src_cur, scheme)
 
-				if "format" in src_metadatas:
-					tile_format = src_metadatas["format"]
-
-			if bounds is None:
-				bounds = get_mbtiles_bounds_from_tiles(src_cur, scheme)
-
-				if merge_bbox and get_intersect_bbox(merge_bbox, bounds) is None:
+				if limit_bounds and get_intersect_bbox(limit_bounds, src_bounds) is None:
 					LOGGER.warning(f"Skipping outside MBTiles '{path}' - {idx + 1}...")
 
 					src_conn.close()
 
-					continue
+					if merge_delete:
+						path.unlink(missing_ok=True)
 
-			if tile_format is None:
-				tile_format = get_mbtiles_format_from_tiles(src_cur)
-				if tile_format is None:
-					raise ValueError("Unknow format")
+					continue
 
 			src_conn.close()
 
-			final_bounds = get_cover_bbox(final_bounds, bounds)
+			final_bounds = get_cover_bbox(final_bounds, src_bounds)
 
 			cur.execute("ATTACH DATABASE ? AS src;", (str(path),))
 
@@ -418,15 +425,18 @@ def merge_mbtiles(conn, cur, inputs, merge_bbox, merge_strategy, compression, wo
 			conn.execute("COMMIT;")
 
 			cur.execute("DETACH DATABASE src;")
+
+			if merge_delete:
+				path.unlink(missing_ok=True)
 	finally:
 		if pool:
 			pool.close()
 			pool.join()
 
-	return get_intersect_bbox(merge_bbox, final_bounds)
+	return get_intersect_bbox(limit_bounds, final_bounds)
 
 
-def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme="tms"):
+def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
 	final_metadata = {}
 
 	origin_metadatas = get_mbtiles_metadatas(cur)
@@ -480,9 +490,12 @@ def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme=
 		if maxzoom is not None:
 			final_metadata["maxzoom"] = str(maxzoom)
 
+	if "scheme" not in final_metadata:
+		final_metadata["scheme"] = "tms"
+
 	bounds = None
 	if "bounds" not in final_metadata:
-		bounds = get_mbtiles_bounds_from_tiles(cur, scheme)
+		bounds = get_mbtiles_bounds_from_tiles(cur, final_metadata["scheme"])
 		if bounds:
 			final_metadata["bounds"] = encode_array(bounds)
 	else:
@@ -503,19 +516,25 @@ def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme=
 
 
 # Create MBTiles overview
-def create_overview(conn, cur, resampling, compression, workers, batch_size, scheme="tms"):
-	tile_format = get_mbtiles_format_from_tiles(cur)
-	if tile_format is None or tile_format == "pbf":
-		return None
-	elif tile_format == "pbf":
-		raise ValueError(f"Overview is not support with format '{tile_format}'")
-
-	tile_size = get_mbtiles_tile_size_from_tiles(cur)
-	if tile_size is None:
-		raise ValueError(f"Unknown tile size")
-
+def create_overview(conn, cur, resampling, compression, workers, batch_size, metadata_json):
+	tile_format = "png"
+	tile_size = 256
+	scheme = "tms"
 	is_flip = None
 	maxzoom = None
+
+	if metadata_json:
+		if "format" in metadata_json:
+			tile_format = metadata_json["format"]
+
+		if "tile_size" in metadata_json:
+			tile_size = int(metadata_json["tile_size"])
+
+		if "scheme" in metadata_json:
+			scheme = metadata_json["scheme"]
+
+	if tile_format == "pbf":
+		raise ValueError(f"Overview is not support with format '{tile_format}'")
 
 	metadatas = get_mbtiles_metadatas(cur)
 	if metadatas:
@@ -576,20 +595,19 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 			created_tiles = 0
 
 			c_zoom = maxzoom
-			p_zoom = maxzoom - 1
+			p_z = maxzoom - 1
 
-			last_p_x = -1
-			last_p_y = -1
+			last_p = (-1, -1)
 
-			LOGGER.info(f"Creating zoom - {p_zoom}...")
+			LOGGER.info(f"Creating zoom - {p_z}...")
 
 			while True:
-				tasks = []
-
-				cur.execute(select_p_query, (c_zoom, last_p_x, last_p_x, last_p_y, batch_size))
+				cur.execute(select_p_query, (c_zoom, last_p[0], last_p[0], last_p[1], batch_size))
 				parents = cur.fetchall()
 				if not parents:
 					break
+
+				tasks = []
 
 				for p_x, p_y in parents:
 					min_c_x = p_x * 2
@@ -602,7 +620,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 					if not childrens:
 						continue
 
-					tasks.append((p_zoom, p_x, p_y, childrens, build_args))
+					tasks.append((p_z, p_x, p_y, childrens, build_args))
 
 				if pool:
 					for data in pool.imap_unordered(build_parent_tile, tasks):
@@ -615,9 +633,9 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, sch
 
 						created_tiles += 1
 
-				last_p_x, last_p_y = parents[-1]
+				last_p = parents[-1]
 
-			maxzoom = p_zoom
+			maxzoom = p_z
 
 			if created_tiles <= 1:
 				break
@@ -709,33 +727,21 @@ if __name__ == "__main__":
 	parser.add_argument("-ti", "--tiles-index", required=False, action="store_true", help="Create tiles unique index")
 	parser.add_argument("-ei", "--extra-info", required=False, action="store_true", help="Create extra info in tiles table (hash and created columns)")
 	parser.add_argument("-mj", "--metadata-json", required=False, type=str, help="Metadata JSON string to update metadata table")
+	parser.add_argument("-md", "--merge-delete", required=False, action="store_true", help="Delete input MBtiles after merge")
 	parser.add_argument("-ms", "--merge-strategy", required=False, choices=["overwrite", "keep", "merge"], default="overwrite", help="Merge strategy")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression tile for output MBTiles")
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
 	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to create overview")
-	parser.add_argument("-mb", "--merge_bbox", required=False, type=str, help="Only merge tiles covered by bounding box coordinates in the format 'minX,minY,maxX,maxY'")
 
 	args = parser.parse_args()
 
-	# Parse and validate bbox
-	merge_bbox = None
-	if args.merge_bbox:
-		try:
-			merge_bbox = parse_bounds(args.merge_bbox)
-		except ValueError as e:
-			raise ValueError(f"Invalid BBox coordinates: {e}")
-
 	# Parse and validate metadata json
 	metadata_json = None
-	scheme = "tms"
 	if args.metadata_json:
 		try:
 			metadata_json = json.loads(args.metadata_json)
 			if not isinstance(metadata_json, dict):
 				raise ValueError("Metadata JSON must be an object")
-			
-			if "scheme" in metadata_json:
-				scheme = metadata_json["scheme"]
 		except Exception as e:
 			raise ValueError(f"Invalid Metadata JSON: {e}")
 
@@ -745,7 +751,7 @@ if __name__ == "__main__":
 
 	t0 = time.time()
 
-	conn, cur = connect(args.output)
+	conn, cur = connect(args.output, True)
 
 	if args.metadata_index or args.tiles_index:
 		LOGGER.info(f"Creating indexes MBTiles '{args.output}'...")
@@ -758,7 +764,7 @@ if __name__ == "__main__":
 
 		t1 = time.time()
 
-		merge_bounds = merge_mbtiles(conn, cur, args.inputs, merge_bbox, args.merge_strategy, args.compression, workers, args.batch_size, scheme)
+		merge_bounds = merge_mbtiles(conn, cur, args.inputs, args.merge_strategy, args.merge_delete, args.compression, workers, args.batch_size, metadata_json)
 
 		LOGGER.info(f"Merged MBTiles '{args.output}' in {time.time() - t1:.2f}s!")
 
@@ -768,7 +774,7 @@ if __name__ == "__main__":
 
 		t2 = time.time()
 
-		ovr_minzoom = create_overview(conn, cur, args.resampling, args.compression, workers, args.batch_size, scheme)
+		ovr_minzoom = create_overview(conn, cur, args.resampling, args.compression, workers, args.batch_size, metadata_json)
 
 		LOGGER.info(f"Created overview MBTiles '{args.output}' in {time.time() - t2:.2f}s!")
 
@@ -783,7 +789,7 @@ if __name__ == "__main__":
 
 	LOGGER.info(f"Updating MBTiles metadata '{args.output}'...")
 
-	update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom, scheme)
+	update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom)
 
 	conn.close()
 
