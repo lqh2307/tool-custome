@@ -319,7 +319,7 @@ def move_and_connect(file_path, compression, workers, batch_size):
 		tmp_file_path = file_path.with_name(f"{file_path.stem}_tmp{file_path.suffix}")
 
 		insert_query = "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM tiles WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
 
 		last_rowid = 0
 
@@ -440,10 +440,10 @@ def merge_mbtiles(conn, cur, inputs, merge_strategy, merge_delete, compression, 
 	select_query = None
 	if merge_strategy == "overwrite":
 		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM tiles WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
 	elif merge_strategy == "keep":
 		insert_query = "INSERT OR IGNORE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM tiles WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
 	else:
 		if tile_format == "pbf":
 			raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
