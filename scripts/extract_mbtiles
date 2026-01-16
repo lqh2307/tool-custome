@@ -289,7 +289,7 @@ def hash_tile(args):
 	return hashlib.md5(tile_data).hexdigest(), created, z, x, y
 
 
-def connect(file_path, ensure_schema):
+def connect(file_path, ensure_schema = None):
 	conn = sqlite3.connect(file_path)
 	cur = conn.cursor()
 
