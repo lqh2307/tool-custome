@@ -233,50 +233,14 @@ def get_mbtiles_tile_size_from_tiles(cur):
 	return Image.open(io.BytesIO(row[0])).width
 
 
-def connect(file_path, ensure_schema):
-	conn = sqlite3.connect(file_path)
-	cur = conn.cursor()
+def process_tile(args):
+	z, x, y, tile_data, save_args = args
 
-	cur.execute("PRAGMA journal_mode = OFF;")
-	cur.execute("PRAGMA synchronous = OFF;")
-	cur.execute("PRAGMA foreign_keys = OFF;")
-	cur.execute("PRAGMA encoding = 'UTF-8';")
-	cur.execute("PRAGMA page_size = 65536;")
+	out = io.BytesIO()
 
-	if ensure_schema:
-		cur.execute("CREATE TABLE IF NOT EXISTS metadata (name TEXT NOT NULL, value TEXT NOT NULL, UNIQUE (name));")
-		cur.execute("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL, tile_row INTEGER NOT NULL, tile_data BLOB NOT NULL, UNIQUE (zoom_level, tile_column, tile_row));")
+	Image.open(io.BytesIO(tile_data)).convert("RGBA").save(out, **save_args)
 
-	return conn, cur
-
-
-def create_unique_indexes(cur, metadata_index, tiles_index):
-	def has_unique_index(table_name, column_names):
-		cur.execute(f"PRAGMA index_list ({table_name});")
-		indexes = cur.fetchall()
-		if not indexes:
-			return False
-
-		for _, index_name, is_unique, *_ in indexes:
-			if not is_unique:
-				continue
-
-			cur.execute(f"PRAGMA index_info ({index_name});")
-			columns = cur.fetchall()
-			if not columns:
-				continue
-
-			index_cols = [col[2] for col in columns]
-			if index_cols == column_names:
-				return True
-
-		return False
-
-	if metadata_index and not has_unique_index("metadata", ["name"]):
-		cur.execute("CREATE UNIQUE INDEX metadata_index ON metadata (name);")
-
-	if tiles_index and not has_unique_index("tiles", ["zoom_level", "tile_column", "tile_row"]):
-		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
+	return z, x, y, out.getvalue()
 
 
 def composite_tile(args):
@@ -325,17 +289,138 @@ def hash_tile(args):
 	return hashlib.md5(tile_data).hexdigest(), created, z, x, y
 
 
-def merge_mbtiles(conn, cur, inputs, merge_strategy, merge_delete, compression, workers, batch_size, metadata_json):
-	insert_query = None
-	select_query = None
-	if merge_strategy == "overwrite":
-		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) SELECT zoom_level, tile_column, tile_row, tile_data FROM src.tiles;"
-	elif merge_strategy == "keep":
-		insert_query = "INSERT OR IGNORE INTO tiles (zoom_level, tile_column, tile_row, tile_data) SELECT zoom_level, tile_column, tile_row, tile_data FROM src.tiles;"
-	else:
-		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+def connect(file_path, ensure_schema):
+	conn = sqlite3.connect(file_path)
+	cur = conn.cursor()
 
+	cur.execute("PRAGMA journal_mode = OFF;")
+	cur.execute("PRAGMA synchronous = OFF;")
+	cur.execute("PRAGMA foreign_keys = OFF;")
+	cur.execute("PRAGMA encoding = 'UTF-8';")
+	cur.execute("PRAGMA page_size = 65536;")
+
+	if ensure_schema:
+		cur.execute("CREATE TABLE IF NOT EXISTS metadata (name TEXT NOT NULL, value TEXT NOT NULL, UNIQUE (name));")
+		cur.execute("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL, tile_row INTEGER NOT NULL, tile_data BLOB NOT NULL, UNIQUE (zoom_level, tile_column, tile_row));")
+
+	return conn, cur
+
+
+def move_and_connect(file_path, compression, workers, batch_size):
+	src_conn, src_cur = connect(file_path)
+
+	tile_format = get_mbtiles_metadata(src_cur, "format")
+	if tile_format is None:
+		tile_format = get_mbtiles_format_from_tiles(src_cur)
+
+	src_conn.close()
+
+	if tile_format:
+		tmp_file_path = file_path.with_name(f"{file_path.stem}_tmp{file_path.suffix}")
+
+		insert_query = "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
+		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM tiles WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+
+		last_rowid = 0
+
+		save_args = {
+			"format": tile_format.upper(),
+			"optimize": True,
+			"lossless": True,
+			"quality": 100,
+		}
+		if compression:
+			save_args.update({
+				"compress_level": 9,
+				"method": 6,
+				"subsampling": 2,
+			})
+
+		# Create workers
+		if workers > 1:
+			pool = Pool(workers)
+		else:
+			pool = None
+
+		conn, cur = connect(tmp_file_path, True)
+
+		cur.execute("ATTACH DATABASE ? AS src;", (str(file_path),))
+
+		conn.execute("BEGIN;")
+
+		try:
+			if tile_format == "pbf":
+				while True:
+					cur.execute(select_query, (last_rowid, batch_size))
+					rows = cur.fetchall()
+					if not rows:
+						break
+
+					for _, z, x, y, tile_data in rows:
+						cur.execute(insert_query, (z, x, y, tile_data))
+
+					last_rowid = rows[-1][0]
+			else:
+				while True:
+					cur.execute(select_query, (last_rowid, batch_size))
+					rows = cur.fetchall()
+					if not rows:
+						break
+
+					if pool:
+						for data in pool.imap_unordered(process_tile, [(z, x, y, tile_data, save_args) for _, z, x, y, tile_data in rows]):
+							cur.execute(insert_query, data)
+					else:
+						for _, z, x, y, tile_data in rows:
+							cur.execute(insert_query, process_tile((z, x, y, tile_data, save_args)))
+
+					last_rowid = rows[-1][0]
+		finally:
+			if pool:
+				pool.close()
+				pool.join()
+
+		conn.execute("COMMIT;")
+
+		cur.execute("DETACH DATABASE src;")
+
+		conn.close()
+
+	tmp_file_path.replace(file_path)
+
+	return connect(file_path)
+
+
+def create_unique_indexes(cur, metadata_index, tiles_index):
+	def has_unique_index(table_name, column_names):
+		cur.execute(f"PRAGMA index_list ({table_name});")
+		indexes = cur.fetchall()
+		if not indexes:
+			return False
+
+		for _, index_name, is_unique, *_ in indexes:
+			if not is_unique:
+				continue
+
+			cur.execute(f"PRAGMA index_info ({index_name});")
+			columns = cur.fetchall()
+			if not columns:
+				continue
+
+			index_cols = [col[2] for col in columns]
+			if index_cols == column_names:
+				return True
+
+		return False
+
+	if metadata_index and not has_unique_index("metadata", ["name"]):
+		cur.execute("CREATE UNIQUE INDEX metadata_index ON metadata (name);")
+
+	if tiles_index and not has_unique_index("tiles", ["zoom_level", "tile_column", "tile_row"]):
+		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
+
+
+def merge_mbtiles(conn, cur, inputs, merge_strategy, merge_delete, compression, workers, batch_size, metadata_json):
 	final_bounds = None
 	limit_bounds = None
 	tile_format = "png"
@@ -351,6 +436,34 @@ def merge_mbtiles(conn, cur, inputs, merge_strategy, merge_delete, compression, 
 		if "scheme" in metadata_json:
 			scheme = metadata_json["scheme"]
 
+	insert_query = None
+	select_query = None
+	if merge_strategy == "overwrite":
+		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
+		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM tiles WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+	elif merge_strategy == "keep":
+		insert_query = "INSERT OR IGNORE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
+		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM tiles WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+	else:
+		if tile_format == "pbf":
+			raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
+
+		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
+		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+
+	save_args = {
+		"format": tile_format.upper(),
+		"optimize": True,
+		"lossless": True,
+		"quality": 100,
+	}
+	if compression:
+		save_args.update({
+			"compress_level": 9,
+			"method": 6,
+			"subsampling": 2,
+		})
+
 	# Create workers
 	if workers > 1:
 		pool = Pool(workers)
@@ -359,6 +472,8 @@ def merge_mbtiles(conn, cur, inputs, merge_strategy, merge_delete, compression, 
 
 	try:
 		for idx, path in enumerate(inputs):
+			last_rowid = 0
+
 			LOGGER.info(f"Merging '{path}' - {idx + 1}...")
 
 			src_conn = sqlite3.connect(path, False)
@@ -388,25 +503,19 @@ def merge_mbtiles(conn, cur, inputs, merge_strategy, merge_delete, compression, 
 
 			conn.execute("BEGIN;")
 
-			if select_query:
+			if merge_strategy == "overwrite" or merge_strategy == "keep":
 				if tile_format == "pbf":
-					raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
+					while True:
+						cur.execute(select_query, (last_rowid, batch_size))
+						rows = cur.fetchall()
+						if not rows:
+							break
+
+						for _, z, x, y, tile_data in rows:
+							cur.execute(insert_query, (z, x, y, tile_data))
+
+						last_rowid = rows[-1][0]
 				else:
-					save_args = {
-						"format": tile_format.upper(),
-						"optimize": True,
-						"lossless": True,
-						"quality": 100,
-					}
-					if compression:
-						save_args.update({
-							"compress_level": 9,
-							"method": 6,
-							"subsampling": 2,
-						})
-
-					last_rowid = 0
-
 					while True:
 						cur.execute(select_query, (last_rowid, batch_size))
 						rows = cur.fetchall()
@@ -414,15 +523,28 @@ def merge_mbtiles(conn, cur, inputs, merge_strategy, merge_delete, compression, 
 							break
 
 						if pool:
-							for data in pool.imap_unordered(composite_tile, [(z, x, y, new_data, old_data, save_args) for _, z, x, y, new_data, old_data in rows]):
+							for data in pool.imap_unordered(process_tile, [(z, x, y, tile_data, save_args) for _, z, x, y, tile_data in rows]):
 								cur.execute(insert_query, data)
 						else:
-							for _, z, x, y, new_data, old_data in rows:
-								cur.execute(insert_query, composite_tile((z, x, y, new_data, old_data, save_args)))
+							for _, z, x, y, tile_data in rows:
+								cur.execute(insert_query, process_tile((z, x, y, tile_data, save_args)))
 
 						last_rowid = rows[-1][0]
 			else:
-				cur.execute(insert_query)
+				while True:
+					cur.execute(select_query, (last_rowid, batch_size))
+					rows = cur.fetchall()
+					if not rows:
+						break
+
+					if pool:
+						for data in pool.imap_unordered(composite_tile, [(z, x, y, new_data, old_data, save_args) for _, z, x, y, new_data, old_data in rows]):
+							cur.execute(insert_query, data)
+					else:
+						for _, z, x, y, new_data, old_data in rows:
+							cur.execute(insert_query, composite_tile((z, x, y, new_data, old_data, save_args)))
+
+					last_rowid = rows[-1][0]
 
 			conn.execute("COMMIT;")
 
@@ -749,11 +871,23 @@ if __name__ == "__main__":
 
 	workers = max(1, args.workers)
 
+	conn = None
+	cur = None
+
 	LOGGER.info(f"Extracting MBTiles '{args.output}'...")
 
 	t0 = time.time()
 
-	conn, cur = connect(args.output, True)
+	if args.output.exists():
+		LOGGER.info(f"Moving MBTiles '{args.output}'...")
+
+		t1 = time.time()
+
+		conn, cur = move_and_connect(args.output, args.compression, workers, args.batch_size)
+
+		LOGGER.info(f"Moved MBTiles '{args.output}' in {time.time() - t1:.2f}s!")
+	else:
+		conn, cur = connect(args.output, True)
 
 	if args.metadata_index or args.tiles_index:
 		LOGGER.info(f"Creating indexes MBTiles '{args.output}'...")
@@ -764,30 +898,30 @@ if __name__ == "__main__":
 	if args.inputs:
 		LOGGER.info(f"Merging MBTiles '{args.output}'...")
 
-		t1 = time.time()
+		t2 = time.time()
 
 		merge_bounds = merge_mbtiles(conn, cur, args.inputs, args.merge_strategy, args.merge_delete, args.compression, workers, args.batch_size, metadata_json)
 
-		LOGGER.info(f"Merged MBTiles '{args.output}' in {time.time() - t1:.2f}s!")
+		LOGGER.info(f"Merged MBTiles '{args.output}' in {time.time() - t2:.2f}s!")
 
 	ovr_minzoom = None
 	if args.overview:
 		LOGGER.info(f"Creating overview MBTiles '{args.output}'...")
 
-		t2 = time.time()
+		t3 = time.time()
 
 		ovr_minzoom = create_overview(conn, cur, args.resampling, args.compression, workers, args.batch_size, metadata_json)
 
-		LOGGER.info(f"Created overview MBTiles '{args.output}' in {time.time() - t2:.2f}s!")
+		LOGGER.info(f"Created overview MBTiles '{args.output}' in {time.time() - t3:.2f}s!")
 
 	if args.extra_info:
 		LOGGER.info(f"Updating MBTiles hash and created '{args.output}'...")
 
-		t3 = time.time()
+		t4 = time.time()
 
 		update_hash_and_created(conn, cur, args.batch_size)
 
-		LOGGER.info(f"Updated MBTiles hash and created '{args.output}' in {time.time() - t3:.2f}s!")
+		LOGGER.info(f"Updated MBTiles hash and created '{args.output}' in {time.time() - t4:.2f}s!")
 
 	LOGGER.info(f"Updating MBTiles metadata '{args.output}'...")
 
