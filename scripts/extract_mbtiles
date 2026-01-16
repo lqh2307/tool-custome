@@ -155,17 +155,19 @@ def get_intersect_bbox(bbox1, bbox2):
 
 
 # ========= MBTILES =========
-def get_mbtiles_metadatas(cur, name = None):
+def get_mbtiles_metadata(cur, name):
 	if name is not None:
 		cur.execute("SELECT name, value FROM metadata WHERE name = ?;", (name,))
 		row = cur.fetchone()
 		if row:
-			return { row[0]: row[1] }
-	else:
-		cur.execute("SELECT name, value FROM metadata;")
-		rows = cur.fetchall()
-		if rows:
-			return { name: value for name, value in rows }
+			return row[1]
+
+
+def get_mbtiles_metadatas(cur):
+	cur.execute("SELECT name, value FROM metadata;")
+	rows = cur.fetchall()
+	if rows:
+		return { name: value for name, value in rows }
 
 
 def get_mbtiles_bounds_from_tiles(cur, scheme="tms"):
@@ -362,7 +364,7 @@ def merge_mbtiles(conn, cur, inputs, merge_strategy, merge_delete, compression, 
 			src_conn = sqlite3.connect(path, False)
 			src_cur = src_conn.cursor()
 
-			src_bounds = get_mbtiles_metadatas(src_cur, "bounds")
+			src_bounds = get_mbtiles_metadata(src_cur, "bounds")
 			if src_bounds:
 				src_bounds = parse_bounds(src_bounds)
 			else:
