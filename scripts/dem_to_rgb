@@ -39,8 +39,8 @@ def setup_signals():
 # ========= COMMAND =========
 def setup_command():
 	parser = argparse.ArgumentParser(description="Convert DEM raster to RGB GeoTIFF (Terrain-RGB)")
-	parser.add_argument("-in", "--input", required=True, type=Path, help="Input DEM raster")
-	parser.add_argument("-out", "--output", required=True, type=Path, help="Output RGB GeoTIFF")
+	parser.add_argument("-in", "--input", required=True, type=Path, help="Input DEM raster file path")
+	parser.add_argument("-out", "--output", required=True, type=Path, help="Output RGB GeoTIFF file path")
 	parser.add_argument("-b", "--base-val", required=False, type=float, default=-10000, help="Base value")
 	parser.add_argument("-i", "--interval", required=False, type=float, default=0.1, help="Interval")
 	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")

@@ -67,7 +67,7 @@ def setup_command():
 
 	metadata_group = parser.add_mutually_exclusive_group(required=False)
 	metadata_group.add_argument("-mj", "--metadata-json", type=str, help="Metadata JSON string to update metadata table")
-	metadata_group.add_argument("-mjf", "--metadata-json-file", type=Path, help="Metadata JSON file path to update metadata table")
+	metadata_group.add_argument("-mf", "--metadata-json-file", type=Path, help="Metadata JSON file path to update metadata table")
 
 	return parser
 
@@ -210,6 +210,62 @@ def get_intersect_bbox(bbox1, bbox2):
 	return None
 
 
+def process_tile(args):
+	z, x, y, tile_data, save_args = args
+
+	out = io.BytesIO()
+
+	Image.open(io.BytesIO(tile_data)).convert("RGBA").save(out, **save_args)
+
+	return z, x, y, out.getvalue()
+
+
+def composite_tile(args):
+	z, x, y, new_data, old_data, save_args = args
+
+	out = io.BytesIO()
+
+	new_img = Image.open(io.BytesIO(new_data)).convert("RGBA")
+
+	if old_data:
+		Image.alpha_composite(Image.open(io.BytesIO(old_data)).convert("RGBA"), new_img).save(out, **save_args)
+	else:
+		new_img.save(out, **save_args)
+
+	return z, x, y, out.getvalue()
+
+
+def build_parent_tile(args):
+	p_z, p_x, p_y, childrens, build_args = args
+
+	min_c_x = p_x * 2
+	min_c_y = p_y * 2
+	max_c_y = min_c_y + 1
+
+	out = io.BytesIO()
+
+	canvas = Image.new(*build_args["background_args"])
+
+	for cx, cy, cdata in childrens:
+		canvas.alpha_composite(
+			Image.open(io.BytesIO(cdata)).convert("RGBA"),
+			(
+				(cx - min_c_x) * build_args["tile_size"],
+				(cy - min_c_y if build_args["is_flip"] else max_c_y - cy) * build_args["tile_size"],
+			)
+		)
+
+	canvas.resize(*build_args["resize_args"]).save(out, **build_args["save_args"])
+
+	return p_z, p_x, p_y, out.getvalue()
+
+
+def hash_tile(args):
+	z, x, y, tile_data, created = args
+
+	return hashlib.md5(tile_data).hexdigest(), created, z, x, y
+
+
 # ========= MBTILES =========
 def get_mbtiles_metadata(cur, name):
 	if name is not None:
@@ -289,62 +345,7 @@ def get_mbtiles_tile_size_from_tiles(cur):
 	return Image.open(io.BytesIO(row[0])).width
 
 
-def process_tile(args):
-	z, x, y, tile_data, save_args = args
-
-	out = io.BytesIO()
-
-	Image.open(io.BytesIO(tile_data)).convert("RGBA").save(out, **save_args)
-
-	return z, x, y, out.getvalue()
-
-
-def composite_tile(args):
-	z, x, y, new_data, old_data, save_args = args
-
-	out = io.BytesIO()
-
-	new_img = Image.open(io.BytesIO(new_data)).convert("RGBA")
-
-	if old_data:
-		Image.alpha_composite(Image.open(io.BytesIO(old_data)).convert("RGBA"), new_img).save(out, **save_args)
-	else:
-		new_img.save(out, **save_args)
-
-	return z, x, y, out.getvalue()
-
-
-def build_parent_tile(args):
-	p_z, p_x, p_y, childrens, build_args = args
-
-	min_c_x = p_x * 2
-	min_c_y = p_y * 2
-	max_c_y = min_c_y + 1
-
-	out = io.BytesIO()
-
-	canvas = Image.new(*build_args["background_args"])
-
-	for cx, cy, cdata in childrens:
-		canvas.alpha_composite(
-			Image.open(io.BytesIO(cdata)).convert("RGBA"),
-			(
-				(cx - min_c_x) * build_args["tile_size"],
-				(cy - min_c_y if build_args["is_flip"] else max_c_y - cy) * build_args["tile_size"],
-			)
-		)
-
-	canvas.resize(*build_args["resize_args"]).save(out, **build_args["save_args"])
-
-	return p_z, p_x, p_y, out.getvalue()
-
-
-def hash_tile(args):
-	z, x, y, tile_data, created = args
-
-	return hashlib.md5(tile_data).hexdigest(), created, z, x, y
-
-
+# ======== CONNECT MBTILES =========
 def connect(file_path, ensure_schema = None):
 	conn = sqlite3.connect(file_path)
 	cur = conn.cursor()
@@ -362,6 +363,7 @@ def connect(file_path, ensure_schema = None):
 	return conn, cur
 
 
+# ======== MOVE AND CONNECT MBTILES =========
 def move_and_connect(file_path, compression, workers, batch_size):
 	src_conn, src_cur = connect(file_path)
 
@@ -447,6 +449,7 @@ def move_and_connect(file_path, compression, workers, batch_size):
 	return connect(file_path)
 
 
+# ======== CREATE MBTILES UNIQUE INDEXES =========
 def create_unique_indexes(cur, metadata_index, tiles_index):
 	def has_unique_index(table_name, column_names):
 		cur.execute(f"PRAGMA index_list ({table_name});")
@@ -476,6 +479,7 @@ def create_unique_indexes(cur, metadata_index, tiles_index):
 		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
 
 
+# ========= MERGE MBTILESES =========
 def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers, batch_size, metadata_json):
 	final_bounds = None
 	limit_bounds = None
@@ -616,6 +620,7 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 	return get_intersect_bbox(limit_bounds, final_bounds)
 
 
+# ========= UPDATE MBTILES METADATA =========
 def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
 	final_metadata = {}
 
@@ -695,7 +700,7 @@ def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
 	conn.execute("COMMIT;")
 
 
-# Create MBTiles overview
+# ========= CREATE MBTILES OVERVIEW =========
 def create_overview(conn, cur, resampling, compression, workers, batch_size, metadata_json):
 	tile_format = "png"
 	tile_size = 256
@@ -829,6 +834,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 	return maxzoom
 
 
+# ========= UPDATE MBTILES EXTRA INFO (HASH AND CREATED) =========
 def update_hash_and_created(conn, cur, batch_size):
 	def has_column(column):
 		cur.execute("PRAGMA table_info (tiles);")
