@@ -49,19 +49,25 @@ def setup_signals():
 # ========= COMMAND =========
 def setup_command():
 	parser = argparse.ArgumentParser(description="Extract MBTiles")
-	parser.add_argument("-o", "--output", required=True, type=Path, help="Output MBTiles")
-	parser.add_argument("-i", "--inputs", required=False, nargs="+", type=Path, help="Input MBTileses")
+	parser.add_argument("-o", "--output", required=True, type=Path, help="Output MBTiles file path")
 	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
 	parser.add_argument("-bz", "--batch_size", required=False, type=int, default=1000, help="Batch size")
 	parser.add_argument("-mi", "--metadata-index", required=False, action="store_true", help="Create metadata unique index")
 	parser.add_argument("-ti", "--tiles-index", required=False, action="store_true", help="Create tiles unique index")
 	parser.add_argument("-ei", "--extra-info", required=False, action="store_true", help="Create extra info in tiles table (hash and created columns)")
-	parser.add_argument("-mj", "--metadata-json", required=False, type=str, help="Metadata JSON string to update metadata table")
 	parser.add_argument("-md", "--merge-delete", required=False, action="store_true", help="Delete input MBtiles after merge")
 	parser.add_argument("-ms", "--merge-strategy", required=False, choices=["overwrite", "keep", "merge"], default="overwrite", help="Merge strategy")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression tile for output MBTiles")
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
 	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to create overview")
+
+	input_group = parser.add_mutually_exclusive_group(required=True)
+	input_group.add_argument("-i", "--inputs", nargs="+", type=Path, help="Input MBTiles file paths")
+	input_group.add_argument("-il", "--inputs-list", type=Path, help="Text file path containing input MBTiles file paths (one per line)")
+
+	metadata_group = parser.add_mutually_exclusive_group(required=False)
+	metadata_group.add_argument("-mj", "--metadata-json", type=str, help="Metadata JSON string to update metadata table")
+	metadata_group.add_argument("-mjf", "--metadata-json-file", type=Path, help="Metadata JSON file path to update metadata table")
 
 	return parser
 
@@ -101,6 +107,20 @@ def lonlat4326_to_xy3857(lon, lat):
 
 def xy3857_to_lonlat4326(x, y):
 	return limit_value(x / SPHERICAL_RADIUS * MAX_LON / math.pi, -MAX_LON, MAX_LON), limit_value(math.atan(math.sinh(y / SPHERICAL_RADIUS)) * MAX_LON / math.pi, -MAX_CAL_LAT, MAX_CAL_LAT)
+
+
+def get_tile_bound_4326(z, x, y, scheme="tms"):
+	min_lon, max_lat = get_lonlat_from_xyz(x, y, z, "top-left", scheme)
+	max_lon, min_lat = get_lonlat_from_xyz(x, y, z, "bottom-right", scheme)
+
+	return [min_lon, min_lat, max_lon, max_lat]
+
+
+def get_tile_bound_3857(z, x, y, scheme="tms"):
+	min_lon, max_lat = get_lonlat_from_xyz(x, y, z, "top-left", scheme)
+	max_lon, min_lat = get_lonlat_from_xyz(x, y, z, "bottom-right", scheme)
+
+	return [*lonlat4326_to_xy3857(min_lon, min_lat), *lonlat4326_to_xy3857(max_lon, max_lat)]
 
 
 def get_xyz_from_lonlatz(lon, lat, z, scheme="tms"):
@@ -878,10 +898,40 @@ if __name__ == "__main__":
 	if args.metadata_json:
 		try:
 			metadata_json = json.loads(args.metadata_json)
-			if not isinstance(metadata_json, dict):
-				raise ValueError("Metadata JSON must be an object")
 		except Exception as e:
-			raise ValueError(f"Invalid Metadata JSON: {e}")
+			raise ValueError(f"Invalid Metadata JSON string: {e}")
+	elif args.metadata_file:
+		if not args.metadata_file.exists():
+			raise FileNotFoundError(f"Metadata JSON file not found: {args.metadata_file}")
+
+		try:
+			with open(args.metadata_file, "r", encoding="utf-8") as f:
+				metadata_json = json.load(f)
+		except Exception as e:
+			raise ValueError(f"Invalid Metadata JSON file: {e}")
+
+	if args.metadata_json:
+		metadata_json = json.loads(args.metadata_json)
+		if not isinstance(metadata_json, dict):
+			raise ValueError("Metadata JSON must be an object")
+
+	# Parse and validate input MBTiles file paths
+	inputs = []
+	if args.inputs:
+		inputs = args.inputs
+	elif args.inputs_list:
+		if not args.inputs_list.exists():
+			raise FileNotFoundError(f"Input MBTiles files list not found: {args.inputs_list}")
+
+		with open(args.inputs_list, "r", encoding="utf-8") as f:
+			for line in f:
+				line = line.strip()
+				if line:
+					inputs.append(Path(line))
+
+	for input in inputs:
+		if not input.exists():
+			raise FileNotFoundError(f"Input MBTiles file not found: {input}")
 
 	workers = max(1, args.workers)
 
@@ -909,12 +959,12 @@ if __name__ == "__main__":
 		create_unique_indexes(cur, args.metadata_index, args.tiles_index)
 
 	merge_bounds = None
-	if args.inputs:
+	if inputs:
 		LOGGER.info(f"Merging MBTiles '{args.output}'...")
 
 		t2 = time.time()
 
-		merge_bounds = merge(conn, cur, args.inputs, args.merge_strategy, args.merge_delete, args.compression, workers, args.batch_size, metadata_json)
+		merge_bounds = merge(conn, cur, inputs, args.merge_strategy, args.merge_delete, args.compression, workers, args.batch_size, metadata_json)
 
 		LOGGER.info(f"Merged MBTiles '{args.output}' in {time.time() - t2:.2f}s!")
 
