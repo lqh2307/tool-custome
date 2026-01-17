@@ -21,6 +21,34 @@ LOGGER.addHandler(handler)
 LOGGER.setLevel(logging.INFO)
 
 
+# ========= SIGNALS =========
+def setup_signals():
+	signal.signal(signal.SIGINT, lambda sig, frame: (
+		LOGGER.info("Received 'SIGINT' signal. Exitting..."),
+
+		sys.exit(0)
+	))
+
+	signal.signal(signal.SIGTERM, lambda sig, frame: (
+		LOGGER.info("Received 'SIGTERM' signal. Exitting..."),
+
+		sys.exit(0)
+	))
+
+
+# ========= COMMAND =========
+def setup_command():
+	parser = argparse.ArgumentParser(description="Convert RGB raster (Terrain-RGB) to DEM GeoTIFF")
+	parser.add_argument("-in", "--input", required=True, type=Path, help="Input RGB raster")
+	parser.add_argument("-out", "--output", required=True, type=Path, help="Output DEM GeoTIFF")
+	parser.add_argument("-b", "--base-val", required=False, type=float, default=-10000, help="Base value")
+	parser.add_argument("-i", "--interval", required=False, type=float, default=0.1, help="Interval")
+	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
+	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output GeoTIFF")
+
+	return parser
+
+
 # ========= DECODE =========
 def rgb_to_data(args):
 	rgb, convert_args = args
@@ -36,29 +64,13 @@ def rgb_to_data(args):
 
 if __name__ == "__main__":
 	if threading.current_thread() is threading.main_thread():
-		signal.signal(signal.SIGINT, lambda sig, frame: (
-			LOGGER.info("Received 'SIGINT' signal. Exitting..."),
+		setup_signals()
 
-			sys.exit(0)
-		))
-
-		signal.signal(signal.SIGTERM, lambda sig, frame: (
-			LOGGER.info("Received 'SIGTERM' signal. Exitting..."),
-
-			sys.exit(0)
-		))
-
-	parser = argparse.ArgumentParser(description="Convert RGB (Terrain-RGB) GeoTIFF to DEM")
-	parser.add_argument("-in", "--input", required=True, type=Path, help="Input RGB GeoTIFF")
-	parser.add_argument("-out", "--output", required=True, type=Path, help="Output DEM GeoTIFF")
-	parser.add_argument("-b", "--base-val", required=False, type=float, default=-10000, help="Base value")
-	parser.add_argument("-i", "--interval", required=False, type=float, default=0.1, help="Interval")
-	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
-	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output GeoTIFF")
+	parser = setup_command()
 
 	args = parser.parse_args()
 
-	LOGGER.info(f"Converting RGB (Terrain-RGB) GeoTIFF to DEM '{args.input}' -> '{args.output}'...")
+	LOGGER.info(f"Converting RGB raster (Terrain-RGB) to DEM GeoTIFF '{args.input}' -> '{args.output}'...")
 
 	t0 = time.time()
 
@@ -115,4 +127,4 @@ if __name__ == "__main__":
 					for w, dem in zip(window_generator(), pool.imap(rgb_to_data, task_gen(), chunksize=1)):
 						dst.write(dem, 1, window=w)
 
-		LOGGER.info(f"Converted RGB (Terrain-RGB) GeoTIFF to DEM '{args.input}' -> '{args.output}' in {time.time() - t0:.2f}s!")
+	LOGGER.info(f"Converted RGB raster (Terrain-RGB) to DEM GeoTIFF '{args.input}' -> '{args.output}' in {time.time() - t0:.2f}s!")
