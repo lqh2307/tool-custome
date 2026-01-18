@@ -109,20 +109,6 @@ def xy3857_to_lonlat4326(x, y):
 	return limit_value(x / SPHERICAL_RADIUS * MAX_LON / math.pi, -MAX_LON, MAX_LON), limit_value(math.atan(math.sinh(y / SPHERICAL_RADIUS)) * MAX_LON / math.pi, -MAX_CAL_LAT, MAX_CAL_LAT)
 
 
-def get_tile_bound_4326(z, x, y, scheme="tms"):
-	min_lon, max_lat = get_lonlat_from_xyz(x, y, z, "top-left", scheme)
-	max_lon, min_lat = get_lonlat_from_xyz(x, y, z, "bottom-right", scheme)
-
-	return [min_lon, min_lat, max_lon, max_lat]
-
-
-def get_tile_bound_3857(z, x, y, scheme="tms"):
-	min_lon, max_lat = get_lonlat_from_xyz(x, y, z, "top-left", scheme)
-	max_lon, min_lat = get_lonlat_from_xyz(x, y, z, "bottom-right", scheme)
-
-	return [*lonlat4326_to_xy3857(min_lon, min_lat), *lonlat4326_to_xy3857(max_lon, max_lat)]
-
-
 def get_xyz_from_lonlatz(lon, lat, z, scheme="tms"):
 	max_tile = 1 << z
 
@@ -149,6 +135,20 @@ def get_lonlat_from_xyz(x, y, z, position, scheme="tms"):
 		y += 1
 
 	return [(2 * MAX_LON) * (x / max_tile - 0.5), ((2 * MAX_LON) * math.atan(math.exp(math.pi * (1 - 2 * y / max_tile))) / math.pi) - MAX_LAT]
+
+
+def get_tile_bounds_4326(x, y, z, scheme="tms"):
+	min_lon, max_lat = get_lonlat_from_xyz(x, y, z, "top-left", scheme)
+	max_lon, min_lat = get_lonlat_from_xyz(x, y, z, "bottom-right", scheme)
+
+	return [min_lon, min_lat, max_lon, max_lat]
+
+
+def get_tile_bounds_3857(x, y, z, scheme="tms"):
+	min_lon, max_lat = get_lonlat_from_xyz(x, y, z, "top-left", scheme)
+	max_lon, min_lat = get_lonlat_from_xyz(x, y, z, "bottom-right", scheme)
+
+	return [*lonlat4326_to_xy3857(min_lon, min_lat), *lonlat4326_to_xy3857(max_lon, max_lat)]
 
 
 def get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme = "tms"):

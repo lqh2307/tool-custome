@@ -51,7 +51,7 @@ def setup_command():
 
 # ========= ENCODE =========
 def data_to_rgb(args):
-	data, convert_args = args
+	data, window, convert_args = args
 
 	data = (data.astype(numpy.float64, copy=False) - convert_args["base_val"]) / convert_args["interval"]
 
@@ -64,7 +64,7 @@ def data_to_rgb(args):
 	rgb[1] = (data // 256) % 256
 	rgb[0] = (data // (256 * 256)) % 256
 
-	return rgb
+	return rgb, window
 
 
 if __name__ == "__main__":
@@ -100,36 +100,43 @@ if __name__ == "__main__":
 
 		args.output.unlink(missing_ok=True)
 
-		block_h, block_w = src.block_shapes[0]
-
-		# ========= WINDOW GENERATOR =========
-		def window_generator():
-			for y in range(0, src.height, block_h):
-				h = min(block_h, src.height - y)
-
-				for x in range(0, src.width, block_w):
-					yield Window(x, y, min(block_w, src.width - x), h)
-
 		with rasterio.open(args.output, "w", **profile) as dst:
-			workers = max(1, args.workers)
+			block_h, block_w = src.block_shapes[0]
 
 			convert_args = {
 				"base_val": args.base_val,
 				"interval": args.interval,
 			}
 
-			# ========= SINGLE PROCESS =========
-			if workers == 1:
-				for w in window_generator():
-					dst.write(data_to_rgb(src.read(1, window=w), convert_args), window=w)
-			# ========= MULTI PROCESS =========
-			else:
-				def task_gen():
-					for w in window_generator():
-						yield (src.read(1, window=w), convert_args)
+			def window_generator():
+				for y in range(0, src.height, block_h):
+					h = min(block_h, src.height - y)
 
-				with Pool(workers) as pool:
-					for w, rgb in zip(window_generator(), pool.imap(data_to_rgb, task_gen(), chunksize=1)):
-						dst.write(rgb, window=w)
+					for x in range(0, src.width, block_w):
+						window = Window(x, y, min(block_w, src.width - x), h)
+
+						yield (src.read(1, window=window), window, convert_args)
+
+			workers = max(1, args.workers)
+
+			# Create workers
+			if workers > 1:
+				pool = Pool(workers)
+			else:
+				pool = None
+
+			try:
+				if pool:
+					for rgb, window in pool.imap_unordered(data_to_rgb, window_generator()):
+						dst.write(rgb, window=window)
+				else:
+					for args in window_generator():
+						rgb, window = data_to_rgb(args)
+
+						dst.write(rgb, window=window)
+			finally:
+				if pool:
+					pool.close()
+					pool.join()
 
 	LOGGER.info(f"Converted DEM raster to RGB GeoTIFF (Terrain-RGB) '{args.input}' -> '{args.output}' in {time.time() - t0:.2f}s!")
