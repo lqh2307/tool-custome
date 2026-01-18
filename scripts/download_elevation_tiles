@@ -108,6 +108,7 @@ def download_tile(args):
 		LOGGER.error(f"Failed to downloading elevation tile '{dir_name}/{tile_name}': {e}")
 
 
+# ========= MAIN =========
 if __name__ == "__main__":
 	if threading.current_thread() is threading.main_thread():
 		setup_signals()

@@ -67,6 +67,7 @@ def data_to_rgb(args):
 	return rgb, window
 
 
+# ========= MAIN =========
 if __name__ == "__main__":
 	if threading.current_thread() is threading.main_thread():
 		setup_signals()

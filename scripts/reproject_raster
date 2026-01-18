@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+
+from rasterio.warp import calculate_default_transform, reproject
+from rasterio.enums import Resampling
+from rasterio.windows import Window
+from pathlib import Path
+import threading
+import argparse
+import rasterio
+import logging
+import signal
+import numpy
+import time
+import sys
+
+
+# ========= LOGS =========
+LOGGER = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)5s: %(message)s"))
+LOGGER.addHandler(handler)
+LOGGER.setLevel(logging.INFO)
+
+
+# ========= SIGNALS =========
+def setup_signals():
+	signal.signal(signal.SIGINT, lambda sig, frame: (
+		LOGGER.info("Received 'SIGINT' signal. Exitting..."),
+
+		sys.exit(0)
+	))
+
+	signal.signal(signal.SIGTERM, lambda sig, frame: (
+		LOGGER.info("Received 'SIGTERM' signal. Exitting..."),
+
+		sys.exit(0)
+	))
+
+
+# ========= COMMAND =========
+def setup_command():
+	parser = argparse.ArgumentParser(description="Reproject raster")
+	parser.add_argument("-i", "--input", required=True, type=Path, help="Input raster file path")
+	parser.add_argument("-o", "--output", required=True, type=Path, help="Output raster file path")
+	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
+	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output raster")
+	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to reproject")
+	parser.add_argument("-e", "--expand", required=False, choices=["rgb", "rgba"], default="rgba", help="Expand to RGB or RGBA")
+	parser.add_argument("-t", "--target", required=False, type=str, help="Target SRS")
+
+	return parser
+
+
+def expand_to_rgba(src, dst_path, compression, rgb):
+	band_count = 3 if rgb else 4
+
+	profile = src.profile.copy()
+	profile.update(
+		count=band_count,
+		dtype="uint8",
+		photometric="RGB",
+		interleave="pixel",
+		tiled=True,
+		blockxsize=512,
+		blockysize=512,
+		bigtiff="YES",
+	)
+
+	if compression:
+		profile.update(
+			compress="LZW",
+			predictor=2,
+		)
+
+	# ===== Build LUT =====
+	lut = numpy.zeros((band_count, 256), dtype=numpy.uint8)
+
+	for k, v in src.colormap(1).items():
+		if len(v) == 3:
+			r, g, b = v
+			a = 255
+		else:
+			r, g, b, a = v
+
+		lut[:, k] = (r, g, b) if rgb else (r, g, b, a)
+
+	block_h, block_w = src.block_shapes[0]
+
+	with rasterio.open(dst_path, "w", **profile) as dst:
+		for y in range(0, src.height, block_h):
+			h = min(block_h, src.height - y)
+
+			for x in range(0, src.width, block_w):
+				window = Window(x, y, min(block_w, src.width - x), h)
+
+				idx = src.read(1, window=window)
+				out = lut[:, idx]
+
+				dst.write(out, window=window)
+
+
+def reproject_raster(src, dst_path, workers, compression, resampling, dst_crs):
+	transform, width, height = calculate_default_transform(
+		src.crs, dst_crs, src.width, src.height, *src.bounds
+	)
+
+	profile = src.profile.copy()
+	profile.update(
+		crs=dst_crs,
+		transform=transform,
+		width=width,
+		height=height,
+		tiled=True,
+		blockxsize=512,
+		blockysize=512,
+		bigtiff="YES",
+	)
+
+	if compression:
+		profile.update(
+			compress="LZW",
+			predictor=2,
+		)
+
+	if resampling == "nearest":
+		resampling = Resampling.nearest
+	elif resampling == "bilinear":
+		resampling = Resampling.bilinear
+	elif resampling == "cubic":
+		resampling = Resampling.cubic
+	else:
+		resampling = Resampling.lanczos
+
+	with rasterio.open(dst_path, "w", **profile) as dst:
+		for b in range(1, src.count + 1):
+			reproject(
+				source=rasterio.band(src, b),
+				destination=rasterio.band(dst, b),
+				src_transform=src.transform,
+				src_crs=src.crs,
+				dst_transform=transform,
+				dst_crs=dst_crs,
+				resampling=resampling,
+				num_threads=workers,
+			)
+
+
+# ========= MAIN =========
+if __name__ == "__main__":
+	if threading.current_thread() is threading.main_thread():
+		setup_signals()
+
+	parser = setup_command()
+
+	args = parser.parse_args()
+
+	workers = max(1, args.workers)
+
+	LOGGER.info(f"Reprojecting {args.input} -> {args.output}...")
+
+	t0 = time.time()
+
+	with rasterio.open(args.input) as src:
+		args.output.unlink(missing_ok=True)
+
+		do_expand = src.colorinterp[0].name == "palette" and src.colormap(1)
+
+		if do_expand and not args.target:
+			LOGGER.info(f"Expanding {args.input} -> {args.output}...")
+
+			expand_to_rgba(src, args.output, args.compression, args.expand == "rgb")
+		elif not do_expand and args.target:
+			LOGGER.info(f"Reprojecting {args.input} -> {args.output}...")
+
+			reproject_raster(src, args.output, workers, args.compression, args.resampling, args.target)
+		elif do_expand and args.target:
+			tmp_file_path = args.input.with_name(f"{args.input.stem}_tmp{args.input.suffix}")
+			tmp_file_path.unlink(missing_ok=True)
+
+			LOGGER.info(f"Expanding {args.input} -> {tmp_file_path}...")
+
+			expand_to_rgba(src, tmp_file_path, args.compression, args.expand == "rgb")
+
+			LOGGER.info(f"Reprojecting {tmp_file_path} -> {args.output}...")
+
+			with rasterio.open(tmp_file_path) as tmp_src:
+				reproject_raster(tmp_src, args.output, workers, args.compression, args.resampling, args.target)
+
+			tmp_file_path.unlink(missing_ok=True)
+		else:
+			LOGGER.info(f"Copying {args.input} -> {args.output}")
+
+			profile = src.profile.copy()
+			with rasterio.open(args.output, "w", **profile) as dst:
+				for i in range(1, src.count + 1):
+					dst.write(src.read(i), i)
+
+	LOGGER.info(f"Reprojected {args.input} -> {args.output} in {time.time() - t0:.2f}s!")

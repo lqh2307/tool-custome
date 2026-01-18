@@ -374,8 +374,6 @@ def move_and_connect(file_path, compression, workers, batch_size):
 	src_conn.close()
 
 	if tile_format:
-		tmp_file_path = file_path.with_name(f"{file_path.stem}_tmp{file_path.suffix}")
-
 		insert_query = "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
 		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
 
@@ -399,6 +397,9 @@ def move_and_connect(file_path, compression, workers, batch_size):
 			pool = Pool(workers)
 		else:
 			pool = None
+
+		tmp_file_path = file_path.with_name(f"{file_path.stem}_tmp{file_path.suffix}")
+		tmp_file_path.unlink(missing_ok=True)
 
 		conn, cur = connect(tmp_file_path, True)
 
@@ -891,6 +892,7 @@ def update_hash_and_created(conn, cur, batch_size):
 	conn.execute("COMMIT;")
 
 
+# ========= MAIN =========
 if __name__ == "__main__":
 	if threading.current_thread() is threading.main_thread():
 		setup_signals()
