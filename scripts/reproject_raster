@@ -45,8 +45,9 @@ def setup_command():
 	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output")
 	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to reproject")
-	parser.add_argument("-e", "--expand", required=False, choices=["rgb", "rgba"], help="Expand to RGB or RGBA")
+	parser.add_argument("-e", "--expand", required=False, choices=["rgb", "rgba"], help="Expand to RGB/RGBA")
 	parser.add_argument("-t", "--target", required=False, type=str, help="Target SRS")
+	parser.add_argument("-od", "--output-driver", required=False, type=str, default="GTiff", help="Output driver")
 
 	return parser
 
@@ -65,6 +66,11 @@ def expand_to_rgba(src, dst_path, compression, rgb):
 		blockysize=512,
 		bigtiff="YES",
 	)
+
+	if args.output_driver == "GTiff":
+		profile.update(
+			driver="GTiff",
+		)
 
 	if compression:
 		profile.update(
@@ -170,7 +176,7 @@ if __name__ == "__main__":
 				tmp_file_path = args.input.with_name(f"{args.input.stem}_tmp{args.input.suffix}")
 				tmp_file_path.unlink(missing_ok=True)
 
-				LOGGER.info(f"Expanding {expand} '{args.input}' -> '{tmp_file_path}'...")
+				LOGGER.info(f"Palette band found. Expanding {expand} '{args.input}' -> '{tmp_file_path}'...")
 
 				expand_to_rgba(src, tmp_file_path, args.compression, args.expand == "rgb")
 
@@ -188,7 +194,7 @@ if __name__ == "__main__":
 
 				expand_to_rgba(src, args.output, args.compression, args.expand == "rgb")
 			else:
-				raise "Input is not a paletted raster!"
+				raise ValueError("Input has no paletted band raster!")
 		else:
 			LOGGER.info(f"Copying '{args.input}' -> '{args.output}'...")
 

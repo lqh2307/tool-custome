@@ -77,12 +77,12 @@ def parse_bounds(bounds):
 	parts = bounds.split(",")
 
 	if len(parts) != 4:
-		raise ValueError("Invalid bounds format")
+		raise ValueError(f"Invalid bounds format '{bounds}'")
 
 	bounds = [float(x) for x in parts]
 
 	if bounds[0] >= bounds[2] or bounds[0] < -MAX_LON or bounds[2] > MAX_LON or bounds[1] >= bounds[3] or bounds[1] < -MAX_LAT or bounds[3] > MAX_LAT:
-		raise ValueError("Invalid bounds")
+		raise ValueError(f"Invalid bounds values '{bounds}'")
 
 	return bounds
 
@@ -907,16 +907,16 @@ if __name__ == "__main__":
 		try:
 			metadata_json = json.loads(args.metadata_json)
 		except Exception as e:
-			raise ValueError(f"Invalid Metadata JSON string: {e}")
+			raise ValueError(f"Invalid Metadata JSON string {e}")
 	elif args.metadata_file:
 		if not args.metadata_file.exists():
-			raise FileNotFoundError(f"Metadata JSON file not found: {args.metadata_file}")
+			raise FileNotFoundError(f"Metadata JSON file not found '{args.metadata_file}'")
 
 		try:
 			with open(args.metadata_file, "r", encoding="utf-8") as f:
 				metadata_json = json.load(f)
 		except Exception as e:
-			raise ValueError(f"Invalid Metadata JSON file: {e}")
+			raise ValueError(f"Invalid Metadata JSON file {e}")
 
 	if args.metadata_json:
 		metadata_json = json.loads(args.metadata_json)
@@ -929,7 +929,7 @@ if __name__ == "__main__":
 		inputs = args.inputs
 	elif args.inputs_list:
 		if not args.inputs_list.exists():
-			raise FileNotFoundError(f"Input MBTiles files list not found: {args.inputs_list}")
+			raise FileNotFoundError(f"Input MBTiles files list not found '{args.inputs_list}'")
 
 		with open(args.inputs_list, "r", encoding="utf-8") as f:
 			for line in f:
@@ -939,7 +939,7 @@ if __name__ == "__main__":
 
 	for input in inputs:
 		if not input.exists():
-			raise FileNotFoundError(f"Input MBTiles file not found: {input}")
+			raise FileNotFoundError(f"Input MBTiles file not found '{input}'")
 
 	workers = max(1, args.workers)
 
@@ -951,7 +951,7 @@ if __name__ == "__main__":
 	t0 = time.time()
 
 	if args.output.exists():
-		LOGGER.info(f"Moving MBTiles '{args.output}'...")
+		LOGGER.info(f"Existing output. Moving MBTiles '{args.output}'...")
 
 		t1 = time.time()
 
