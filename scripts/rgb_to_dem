@@ -8,6 +8,7 @@ os.environ["GDAL_NUM_THREADS"] = "ALL_CPUS"
 os.environ["NUM_THREADS"] = "ALL_CPUS"
 
 
+from rasterio.enums import ColorInterp
 from rasterio.windows import Window
 from multiprocessing import Pool
 from pathlib import Path
@@ -89,6 +90,7 @@ if __name__ == "__main__":
 		profile.update(
 			dtype="float64",
 			count=1,
+			photometric="MINISBLACK",
 			nodata=args.base_val,
 			tiled=True,
 			blockxsize=512,
@@ -96,9 +98,9 @@ if __name__ == "__main__":
 			bigtiff="YES",
 		)
 
-		if args.output_driver == "GTiff":
+		if args.output_driver:
 			profile.update(
-				driver="GTiff",
+				driver=args.output_driver,
 			)
 
 		if args.compression:
@@ -143,6 +145,8 @@ if __name__ == "__main__":
 						data, window = rgb_to_data(args)
 
 						dst.write(data, 1, window=window)
+				
+				dst.colorinterp = (ColorInterp.gray,)
 			finally:
 				if pool:
 					pool.close()

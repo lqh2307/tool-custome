@@ -9,8 +9,9 @@ os.environ["NUM_THREADS"] = "ALL_CPUS"
 
 
 from rasterio.warp import calculate_default_transform, reproject
-from rasterio.enums import Resampling
+from rasterio.enums import Resampling, ColorInterp
 from rasterio.windows import Window
+from rasterio.vrt import WarpedVRT
 from pathlib import Path
 import threading
 import argparse
@@ -18,7 +19,6 @@ import rasterio
 import logging
 import signal
 import numpy
-import uuid
 import time
 import sys
 
@@ -61,7 +61,8 @@ def setup_command():
 	return parser
 
 
-def expand_to_rgba(src, dst_path, compression, rgb):
+# ========= UTILS =========
+def expand_to_rgba(src, dst_path, compression, rgb, output_driver="GTiff"):
 	band_count = 3 if rgb else 4
 
 	profile = src.profile.copy()
@@ -76,9 +77,9 @@ def expand_to_rgba(src, dst_path, compression, rgb):
 		bigtiff="YES",
 	)
 
-	if args.output_driver == "GTiff":
+	if output_driver:
 		profile.update(
-			driver="GTiff",
+			driver=output_driver,
 		)
 
 	if compression:
@@ -88,7 +89,7 @@ def expand_to_rgba(src, dst_path, compression, rgb):
 		)
 
 	# ===== Build LUT =====
-	lut = numpy.zeros((band_count, 256), dtype=numpy.uint8)
+	lut = numpy.zeros((256, band_count), dtype=numpy.uint8)
 
 	for k, v in src.colormap(1).items():
 		if len(v) == 3:
@@ -97,27 +98,127 @@ def expand_to_rgba(src, dst_path, compression, rgb):
 		else:
 			r, g, b, a = v
 
-		lut[:, k] = (r, g, b) if rgb else (r, g, b, a)
+		if rgb:
+			lut[k] = (r, g, b)
+		else:
+			lut[k] = (r, g, b, a)
+
+	if src.nodata is not None:
+		ni = int(src.nodata)
+		if 0 <= ni <= 255:
+			if rgb:
+				lut[ni] = (0, 0, 0)
+			else:
+				lut[ni] = (0, 0, 0, 0)
 
 	block_h, block_w = src.block_shapes[0]
 
 	with rasterio.open(dst_path, "w", **profile) as dst:
+		if rgb:
+			dst.colorinterp = (
+				ColorInterp.red,
+				ColorInterp.green,
+				ColorInterp.blue,
+			)
+		else:
+			dst.colorinterp = (
+				ColorInterp.red,
+				ColorInterp.green,
+				ColorInterp.blue,
+				ColorInterp.alpha,
+			)
+
 		for y in range(0, src.height, block_h):
 			h = min(block_h, src.height - y)
 
 			for x in range(0, src.width, block_w):
 				window = Window(x, y, min(block_w, src.width - x), h)
 
-				idx = src.read(1, window=window)
-				out = lut[:, idx]
-
-				dst.write(out, window=window)
+				dst.write(lut[src.read(1, window=window)].transpose(2, 0, 1), window=window)
 
 
-def reproject_raster(src, dst_path, workers, compression, resampling, dst_crs):
+def is_paletted(src):
+	return src.count == 1 and src.colorinterp[0] == ColorInterp.palette and src.colormap(1) is not None
+
+
+def is_grayscale(src):
+	return src.count == 1 and src.colorinterp[0] == ColorInterp.gray and src.colormap(1) is None
+
+
+def is_gray_alpha(src):
+  return src.count == 2 and src.colorinterp == (ColorInterp.gray, ColorInterp.alpha)
+
+
+def is_rgb(src):
+  return src.count == 3 and src.colorinterp == (ColorInterp.red, ColorInterp.green, ColorInterp.blue)
+
+
+def is_rgba(src):
+  return src.count == 4 and src.colorinterp == (ColorInterp.red, ColorInterp.green, ColorInterp.blue, ColorInterp.alpha)
+
+
+def copy_data(src, dst_path, compression, output_driver="GTiff"):
+	paletted = is_paletted(src)
+	grayscale = is_grayscale(src)
+
+	profile = src.profile.copy()
+	profile.update(
+		tiled=True,
+		blockxsize=512,
+		blockysize=512,
+		bigtiff="YES",
+	)
+
+	if paletted:
+		profile.update(photometric="PALETTE")
+	elif grayscale:
+		profile.update(photometric="MINISBLACK")
+	elif src.count in (3, 4):
+		profile.update(photometric="RGB")
+
+	if output_driver:
+		profile.update(
+			driver=output_driver,
+		)
+
+	if compression:
+		profile.update(
+			compress="LZW",
+			predictor=2,
+		)
+
+	with rasterio.open(dst_path, "w", **profile) as dst:
+		for i in range(1, src.count + 1):
+			dst.write(src.read(i), i)
+
+		if paletted:
+			dst.write_colormap(1, src.colormap(1))
+
+			dst.colorinterp = (ColorInterp.palette,)
+		elif grayscale:
+			dst.colorinterp = (ColorInterp.gray,)
+		elif src.count == 3:
+			dst.colorinterp = (
+				ColorInterp.red,
+				ColorInterp.green,
+				ColorInterp.blue,
+			)
+		elif src.count == 4:
+			dst.colorinterp = (
+				ColorInterp.red,
+				ColorInterp.green,
+				ColorInterp.blue,
+				ColorInterp.alpha,
+			)
+
+
+def reproject_raster(src, dst_path, workers, compression, resampling, dst_crs, output_driver="GTiff"):
 	transform, width, height = calculate_default_transform(
 		src.crs, dst_crs, src.width, src.height, *src.bounds
 	)
+
+	paletted = is_paletted(src)
+	grayscale = is_grayscale(src)
 
 	profile = src.profile.copy()
 	profile.update(
@@ -131,9 +232,14 @@ def reproject_raster(src, dst_path, workers, compression, resampling, dst_crs):
 		bigtiff="YES",
 	)
 
-	if src.count == 1:
+	if paletted:
+		profile.update(photometric="PALETTE")
+	elif grayscale:
+		profile.update(photometric="MINISBLACK")
+
+	if output_driver:
 		profile.update(
-			photometric="MINISBLACK"
+			driver=output_driver,
 		)
 
 	if compression:
@@ -141,15 +247,6 @@ def reproject_raster(src, dst_path, workers, compression, resampling, dst_crs):
 			compress="LZW",
 			predictor=2,
 		)
-
-	if resampling == "nearest":
-		resampling = Resampling.nearest
-	elif resampling == "bilinear":
-		resampling = Resampling.bilinear
-	elif resampling == "cubic":
-		resampling = Resampling.cubic
-	else:
-		resampling = Resampling.lanczos
 
 	with rasterio.open(dst_path, "w", **profile) as dst:
 		for b in range(1, src.count + 1):
@@ -164,6 +261,25 @@ def reproject_raster(src, dst_path, workers, compression, resampling, dst_crs):
 				num_threads=workers,
 			)
 
+		if paletted:
+			dst.write_colormap(1, src.colormap(1))
+
+			dst.colorinterp = (ColorInterp.palette,)
+		elif grayscale:
+			dst.colorinterp = (ColorInterp.gray,)
+		elif src.count == 3:
+			dst.colorinterp = (
+				ColorInterp.red,
+				ColorInterp.green,
+				ColorInterp.blue,
+			)
+		elif src.count == 4:
+			dst.colorinterp = (
+				ColorInterp.red,
+				ColorInterp.green,
+				ColorInterp.blue,
+				ColorInterp.alpha,
+			)
 
 # ========= MAIN =========
 if __name__ == "__main__":
@@ -174,6 +290,15 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
+	# Parse resampling
+	resampling = Resampling.lanczos
+	if resampling == "nearest":
+		resampling = Resampling.nearest
+	elif resampling == "bilinear":
+		resampling = Resampling.bilinear
+	elif resampling == "cubic":
+		resampling = Resampling.cubic
+
 	workers = max(1, args.workers)
 
 	LOGGER.info(f"Reprojecting '{args.input}' -> '{args.output}'...")
@@ -183,56 +308,20 @@ if __name__ == "__main__":
 	with rasterio.open(args.input, "r") as src:
 		args.output.unlink(missing_ok=True)
 
+		working_ds = src
+
 		if args.target:
-			if src.colorinterp[0].name == "palette" and src.colormap(1):
-				expand = args.expand or "rgba"
+			LOGGER.info(f"Creating WarpedVRT to {args.target}...")
 
-				tmp_file_path = args.input.with_name(f"{args.input.stem}_{uuid.uuid4().hex}{args.input.suffix}")
+			working_ds = WarpedVRT(src, crs=args.target, resampling=resampling)
 
-				LOGGER.info(f"Palette band found. Expanding {expand} '{args.input}' -> '{tmp_file_path}'...")
+		if args.expand:
+			LOGGER.info(f"Expanding {args.expand} '{args.input}' -> '{args.output}'...")
 
-				expand_to_rgba(src, tmp_file_path, args.compression, args.expand == "rgb")
-
-				LOGGER.info(f"Reprojecting {args.target} '{tmp_file_path}' -> '{args.output}'...")
-
-				with rasterio.open(tmp_file_path, "r") as tmp_src:
-					reproject_raster(tmp_src, args.output, workers, args.compression, args.resampling, args.target)
-
-				tmp_file_path.unlink(missing_ok=True)
-			else:
-				reproject_raster(src, args.output, workers, args.compression, args.resampling, args.target)
-		elif args.expand:
-			if src.colorinterp[0].name == "palette" and src.colormap(1):
-				LOGGER.info(f"Expanding {args.expand} '{args.input}' -> '{args.output}'...")
-
-				expand_to_rgba(src, args.output, args.compression, args.expand == "rgb")
-			else:
-				raise ValueError("Input has no paletted band raster!")
+			expand_to_rgba(working_ds, args.output, args.compression, args.expand == "rgb", args.output_driver)
 		else:
 			LOGGER.info(f"Copying '{args.input}' -> '{args.output}'...")
 
-			profile = src.profile.copy()
-
-			profile.update(
-				tiled=True,
-				blockxsize=512,
-				blockysize=512,
-				bigtiff="YES",
-			)
-
-			if src.count == 1:
-				profile.update(
-					photometric="MINISBLACK"
-				)
-
-			if args.compression:
-				profile.update(
-					compress="LZW",
-					predictor=2,
-				)
-
-			with rasterio.open(args.output, "w", **profile) as dst:
-				for i in range(1, src.count + 1):
-					dst.write(src.read(i), i)
+			copy_data(working_ds, args.output, args.compression, args.output_driver)
 
 	LOGGER.info(f"Reprojected '{args.input}' -> '{args.output}' in {time.time() - t0:.2f}s!")

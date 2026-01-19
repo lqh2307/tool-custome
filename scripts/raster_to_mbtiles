@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 
+from rasterio.windows import from_bounds
+from rasterio.enums import Resampling
+from rasterio.vrt import WarpedVRT
 from multiprocessing import Pool
 from pathlib import Path
 from PIL import Image
 import threading
 import argparse
+import rasterio
 import sqlite3
 import hashlib
 import logging
 import signal
+import numpy
 import uuid
 import time
 import math
@@ -30,7 +35,8 @@ SPHERICAL_RADIUS = 6378137.0
 MAX_LON = 180
 MAX_LAT = 90
 MAX_CAL_LAT = 85.051129
-
+MAX_GM = 2 * math.pi * SPHERICAL_RADIUS
+TARGER_CRS = "EPSG:3857"
 
 # ========= SIGNALS =========
 def setup_signals():
@@ -49,22 +55,17 @@ def setup_signals():
 
 # ========= COMMAND =========
 def setup_command():
-	parser = argparse.ArgumentParser(description="Extract MBTiles")
+	parser = argparse.ArgumentParser(description="Convert raster to MBTiles")
+	parser.add_argument("-i", "--input", required=True, type=Path, help="Input raster file path")
 	parser.add_argument("-o", "--output", required=True, type=Path, help="Output MBTiles file path")
 	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
 	parser.add_argument("-bz", "--batch_size", required=False, type=int, default=1000, help="Batch size")
 	parser.add_argument("-mi", "--metadata-index", required=False, action="store_true", help="Create metadata unique index")
 	parser.add_argument("-ti", "--tiles-index", required=False, action="store_true", help="Create tiles unique index")
 	parser.add_argument("-ei", "--extra-info", required=False, action="store_true", help="Create extra info in tiles table (hash and created columns)")
-	parser.add_argument("-md", "--merge-delete", required=False, action="store_true", help="Delete input MBtiles after merge")
-	parser.add_argument("-ms", "--merge-strategy", required=False, choices=["overwrite", "keep", "merge"], default="overwrite", help="Merge strategy")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression tile for output MBTiles")
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
 	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to create overview")
-
-	input_group = parser.add_mutually_exclusive_group(required=False)
-	input_group.add_argument("-i", "--inputs", nargs="+", type=Path, help="Input MBTiles file paths")
-	input_group.add_argument("-il", "--inputs-list", type=Path, help="Text file path containing input MBTiles file paths (one per line)")
 
 	metadata_group = parser.add_mutually_exclusive_group(required=False)
 	metadata_group.add_argument("-mj", "--metadata-json", type=str, help="Metadata JSON string to update metadata table")
@@ -209,6 +210,10 @@ def get_intersect_bbox(bbox1, bbox2):
 		return bbox2
 
 	return None
+
+
+def get_maxzoom_from_pixel_size(resolution, tile_size):
+	return math.floor(math.log2(MAX_GM / tile_size / resolution))
 
 
 def process_tile(args):
@@ -480,46 +485,113 @@ def create_unique_indexes(cur, metadata_index, tiles_index):
 		cur.execute("CREATE UNIQUE INDEX tiles_index ON tiles (zoom_level, tile_column, tile_row);")
 
 
-# ========= MERGE MBTILESES =========
-def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers, batch_size, metadata_json):
-	final_bounds = None
-	limit_bounds = None
+# ===== GLOBALS FOR WORKERS =====
+_RASTER_SRC = None
+_RASTER_VRT = None
+
+
+def init_raster_worker(raster_path, resampling):
+	global _RASTER_SRC, _RASTER_VRT
+
+	_RASTER_SRC = rasterio.open(raster_path)
+
+	_RASTER_VRT = WarpedVRT(
+		_RASTER_SRC,
+		crs=TARGER_CRS,
+		resampling=resampling
+	)
+
+
+def raster_tile_worker(args):
+	z, x, y, build_args = args
+
+	minx, miny, maxx, maxy = get_tile_bounds_3857(x, y, z)
+
+	window = from_bounds(
+		minx, miny, maxx, maxy,
+		transform=_RASTER_VRT.transform
+	)
+
+	data = _RASTER_VRT.read(
+		window=window,
+		out_shape=(
+			_RASTER_VRT.count,
+			build_args["tile_size"],
+			build_args["tile_size"]
+		),
+		boundless=True,
+		fill_value=0
+	)
+
+	# data shape: (bands, H, W)
+	bands, h, w = data.shape
+
+	if bands == 3:
+		r8, g8, b8 = data
+		a8 = numpy.full((h, w), 255, dtype=numpy.uint8)
+	elif bands == 4:
+		r8, g8, b8, a8 = data
+	else:
+		raise ValueError("Input must be RGB or RGBA")
+
+	rgba = numpy.dstack([r8, g8, b8, a8])
+
+	img = Image.fromarray(rgba, "RGBA")
+
+	buf = io.BytesIO()
+	img.save(buf, **build_args["save_args"])
+
+	return (z, x, y, buf.getvalue())
+
+
+# ========= CONVERT TO MBTILES =========
+def convert_to_mbtiles(conn, cur, raster_path, resampling, compression, workers, metadata_json):
 	tile_format = "png"
+	tile_size = 256
 	scheme = "tms"
+	is_flip = None
 
 	if metadata_json:
-		if "bounds" in metadata_json:
-			limit_bounds = parse_bounds(metadata_json["bounds"])
-
 		if "format" in metadata_json:
 			tile_format = metadata_json["format"]
+
+		if "tile_size" in metadata_json:
+			tile_size = int(metadata_json["tile_size"])
 
 		if "scheme" in metadata_json:
 			scheme = metadata_json["scheme"]
 
-	insert_query = None
-	select_query = None
-	if merge_strategy == "overwrite":
-		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
-	elif merge_strategy == "keep":
-		insert_query = "INSERT OR IGNORE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
-	else:
-		if tile_format == "pbf":
-			raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
+	if tile_format == "pbf":
+		raise ValueError(f"Not support with format '{tile_format}'")
 
-		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+	metadatas = get_mbtiles_metadatas(cur)
+	if metadatas:
+		if "scheme" in metadatas:
+			is_flip = metadatas["scheme"] != scheme
 
-	save_args = {
-		"format": tile_format.upper(),
-		"optimize": True,
-		"lossless": True,
-		"quality": 100,
+	with rasterio.open(raster_path) as src:
+		vrt = WarpedVRT(src, crs=TARGER_CRS, resampling=resampling)
+
+		maxzoom = get_maxzoom_from_pixel_size(max(abs(vrt.transform.a), abs(vrt.transform.e)), tile_size)
+
+		minlon, minlat = xy3857_to_lonlat4326(vrt.bounds.left, vrt.bounds.bottom)
+		maxlon, maxlat = xy3857_to_lonlat4326(vrt.bounds.right, vrt.bounds.top)
+
+		bbox4326 = [minlon, minlat, maxlon, maxlat]
+
+	build_args = {
+		"save_args": {
+			"format": tile_format.upper(),
+			"optimize": True,
+			"lossless": True,
+			"quality": 100,
+		},
+		"is_flip": is_flip,
+		"resampling": resampling,
+		"tile_size": tile_size,
 	}
 	if compression:
-		save_args.update({
+		build_args["save_args"].update({
 			"compress_level": 9,
 			"method": 6,
 			"subsampling": 2,
@@ -527,113 +599,54 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 
 	# Create workers
 	if workers > 1:
-		pool = Pool(workers)
+		pool = Pool(
+			processes=workers,
+			initializer=init_raster_worker,
+			initargs=(str(raster_path),)
+		)
 	else:
 		pool = None
 
+	[x_min, y_min, x_max, y_max] = get_tiles_from_bbox(bbox4326, maxzoom, scheme)
+
+	LOGGER.info(f"Creating level - z: {maxzoom}, x: {x_min} -> {x_max}, y: {y_min} -> {y_max}...")
+
+	insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
+
+	def task_generator():
+		for y in range(y_min, y_max + 1):
+			for x in range(x_min, x_max + 1):
+				yield (maxzoom, x, y, build_args)
+
+	conn.execute("BEGIN;")
+
 	try:
-		for idx, path in enumerate(inputs):
-			last_rowid = 0
-
-			LOGGER.info(f"Merging '{path}' - {idx + 1}...")
-
-			src_conn = sqlite3.connect(path, False)
-			src_cur = src_conn.cursor()
-
-			src_bounds = get_mbtiles_metadata(src_cur, "bounds")
-			if src_bounds:
-				src_bounds = parse_bounds(src_bounds)
-			else:
-				src_bounds = get_mbtiles_bounds_from_tiles(src_cur, scheme)
-
-				if limit_bounds and get_intersect_bbox(limit_bounds, src_bounds) is None:
-					LOGGER.warning(f"Skipping outside MBTiles '{path}' - {idx + 1}...")
-
-					src_conn.close()
-
-					if merge_delete:
-						path.unlink(missing_ok=True)
-
-					continue
-
-			src_conn.close()
-
-			final_bounds = get_cover_bbox(final_bounds, src_bounds)
-
-			cur.execute("ATTACH DATABASE ? AS src;", (str(path),))
-
-			conn.execute("BEGIN;")
-
-			if merge_strategy == "overwrite" or merge_strategy == "keep":
-				if tile_format == "pbf":
-					while True:
-						cur.execute(select_query, (last_rowid, batch_size))
-						rows = cur.fetchall()
-						if not rows:
-							break
-
-						for _, z, x, y, tile_data in rows:
-							cur.execute(insert_query, (z, x, y, tile_data))
-
-						last_rowid = rows[-1][0]
-				else:
-					while True:
-						cur.execute(select_query, (last_rowid, batch_size))
-						rows = cur.fetchall()
-						if not rows:
-							break
-
-						if pool:
-							for data in pool.imap_unordered(process_tile, [(z, x, y, tile_data, save_args) for _, z, x, y, tile_data in rows]):
-								cur.execute(insert_query, data)
-						else:
-							for _, z, x, y, tile_data in rows:
-								cur.execute(insert_query, process_tile((z, x, y, tile_data, save_args)))
-
-						last_rowid = rows[-1][0]
-			else:
-				while True:
-					cur.execute(select_query, (last_rowid, batch_size))
-					rows = cur.fetchall()
-					if not rows:
-						break
-
-					if pool:
-						for data in pool.imap_unordered(composite_tile, [(z, x, y, new_data, old_data, save_args) for _, z, x, y, new_data, old_data in rows]):
-							cur.execute(insert_query, data)
-					else:
-						for _, z, x, y, new_data, old_data in rows:
-							cur.execute(insert_query, composite_tile((z, x, y, new_data, old_data, save_args)))
-
-					last_rowid = rows[-1][0]
-
-			conn.execute("COMMIT;")
-
-			cur.execute("DETACH DATABASE src;")
-
-			if merge_delete:
-				path.unlink(missing_ok=True)
+		for result in pool.imap_unordered(raster_tile_worker, task_generator()):
+			if result is None:
+				continue
+			cur.execute(insert_query, result)
 	finally:
-		if pool:
-			pool.close()
-			pool.join()
+		pool.close()
+		pool.join()
 
-	return get_intersect_bbox(limit_bounds, final_bounds)
+	conn.execute("COMMIT;")
+
+	return bbox4326
 
 
 # ========= UPDATE MBTILES METADATA =========
-def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
+def update_metadata(conn, cur, metadata_json, mbtiles_bounds, ovr_minzoom):
 	final_metadata = {}
 
 	origin_metadatas = get_mbtiles_metadatas(cur)
 	if origin_metadatas:
 		final_metadata.update(origin_metadatas)
 
-	if merge_bounds:
+	if mbtiles_bounds:
 		if "bounds" in final_metadata:
-			final_metadata["bounds"] = encode_array(get_cover_bbox(parse_bounds(final_metadata["bounds"]), merge_bounds))
+			final_metadata["bounds"] = encode_array(get_cover_bbox(parse_bounds(final_metadata["bounds"]), mbtiles_bounds))
 		else:
-			final_metadata["bounds"] = encode_array(merge_bounds)
+			final_metadata["bounds"] = encode_array(mbtiles_bounds)
 
 	if ovr_minzoom is not None:
 		if "minzoom" in final_metadata:
@@ -776,7 +789,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 
 			last_p = (-1, -1)
 
-			LOGGER.info(f"Creating level - z: {p_z}...")
+			LOGGER.info(f"Creating zoom level - {p_z}...")
 
 			while True:
 				cur.execute(select_p_query, (c_zoom, last_p[0], last_p[0], last_p[1], batch_size))
@@ -914,24 +927,6 @@ if __name__ == "__main__":
 		if not isinstance(metadata_json, dict):
 			raise ValueError("Metadata JSON must be an object")
 
-	# Parse and validate input MBTiles file paths
-	inputs = []
-	if args.inputs:
-		inputs = args.inputs
-	elif args.inputs_list:
-		if not args.inputs_list.exists():
-			raise FileNotFoundError(f"Input MBTiles files list not found '{args.inputs_list}'")
-
-		with open(args.inputs_list, "r", encoding="utf-8") as f:
-			for line in f:
-				line = line.strip()
-				if line:
-					inputs.append(Path(line))
-
-	for input in inputs:
-		if not input.exists():
-			raise FileNotFoundError(f"Input MBTiles file not found '{input}'")
-
 	# Parse resampling
 	resampling = Image.LANCZOS
 	if args.resampling == "nearest":
@@ -946,7 +941,7 @@ if __name__ == "__main__":
 	conn = None
 	cur = None
 
-	LOGGER.info(f"Extracting MBTiles '{args.output}'...")
+	LOGGER.info(f"Converting raster to MBTiles '{args.input}' -> '{args.output}'...")
 
 	t0 = time.time()
 
@@ -966,15 +961,15 @@ if __name__ == "__main__":
 
 		create_unique_indexes(cur, args.metadata_index, args.tiles_index)
 
-	merge_bounds = None
-	if inputs:
-		LOGGER.info(f"Merging MBTiles '{args.output}'...")
+	mbtiles_bounds = None
 
-		t2 = time.time()
+	LOGGER.info(f"Converting to MBTiles '{args.input}' -> '{args.output}'...")
 
-		merge_bounds = merge(conn, cur, inputs, args.merge_strategy, args.merge_delete, args.compression, workers, args.batch_size, metadata_json)
+	t2 = time.time()
 
-		LOGGER.info(f"Merged MBTiles '{args.output}' in {time.time() - t2:.2f}s!")
+	mbtiles_bounds = convert_to_mbtiles(conn, cur, args.input, resampling, args.compression, workers, metadata_json)
+
+	LOGGER.info(f"Converted to MBTiles '{args.input}' -> '{args.output}' in {time.time() - t2:.2f}s!")
 
 	ovr_minzoom = None
 	if args.overview:
@@ -997,8 +992,8 @@ if __name__ == "__main__":
 
 	LOGGER.info(f"Updating MBTiles metadata '{args.output}'...")
 
-	update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom)
+	update_metadata(conn, cur, metadata_json, mbtiles_bounds, ovr_minzoom)
 
 	conn.close()
 
-	LOGGER.info(f"Extracted MBTiles '{args.output}' in {time.time() - t0:.2f}s!")
+	LOGGER.info(f"Converted raster to MBTiles '{args.input}' -> '{args.output}' in {time.time() - t0:.2f}s!")
