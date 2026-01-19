@@ -188,7 +188,6 @@ if __name__ == "__main__":
 				expand = args.expand or "rgba"
 
 				tmp_file_path = args.input.with_name(f"{args.input.stem}_{uuid.uuid4().hex}{args.input.suffix}")
-				tmp_file_path.unlink(missing_ok=True)
 
 				LOGGER.info(f"Palette band found. Expanding {expand} '{args.input}' -> '{tmp_file_path}'...")
 
