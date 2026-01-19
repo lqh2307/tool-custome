@@ -193,7 +193,7 @@ if __name__ == "__main__":
 
 				expand_to_rgba(src, tmp_file_path, args.compression, args.expand == "rgb")
 
-				LOGGER.info(f"Reprojecting '{tmp_file_path}' -> '{args.output}'...")
+				LOGGER.info(f"Reprojecting {args.target} '{tmp_file_path}' -> '{args.output}'...")
 
 				with rasterio.open(tmp_file_path, "r") as tmp_src:
 					reproject_raster(tmp_src, args.output, workers, args.compression, args.resampling, args.target)

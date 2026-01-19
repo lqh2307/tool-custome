@@ -62,7 +62,7 @@ def setup_command():
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
 	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to create overview")
 
-	input_group = parser.add_mutually_exclusive_group(required=True)
+	input_group = parser.add_mutually_exclusive_group(required=False)
 	input_group.add_argument("-i", "--inputs", nargs="+", type=Path, help="Input MBTiles file paths")
 	input_group.add_argument("-il", "--inputs-list", type=Path, help="Text file path containing input MBTiles file paths (one per line)")
 
