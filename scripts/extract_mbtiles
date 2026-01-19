@@ -16,7 +16,7 @@ import sys
 import io
 
 
-# ========= LOGS =========
+# ========= LOG =========
 LOGGER = logging.getLogger(__name__)
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)5s: %(message)s"))
@@ -778,19 +778,17 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 
 	try:
 		while maxzoom > 0:
-			created_tiles = 0
-
 			c_zoom = maxzoom
 			p_z = maxzoom - 1
 
 			last_p = (-1, -1)
 
-			LOGGER.info(f"Creating zoom - {p_z}...")
+			LOGGER.info(f"Creating zoom level - {p_z}...")
 
 			while True:
 				cur.execute(select_p_query, (c_zoom, last_p[0], last_p[0], last_p[1], batch_size))
 				parents = cur.fetchall()
-				if not parents:
+				if not parents or len(parents) == 1:
 					break
 
 				tasks = []
@@ -811,20 +809,13 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 				if pool:
 					for data in pool.imap_unordered(build_parent_tile, tasks):
 						cur.execute(insert_query, data)
-
-						created_tiles += 1
 				else:
 					for task in tasks:
 						cur.execute(insert_query, build_parent_tile(task))
 
-						created_tiles += 1
-
 				last_p = parents[-1]
 
 			maxzoom = p_z
-
-			if created_tiles <= 1:
-				break
 	finally:
 		if pool:
 			pool.close()
