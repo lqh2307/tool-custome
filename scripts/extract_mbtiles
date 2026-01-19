@@ -9,6 +9,7 @@ import sqlite3
 import hashlib
 import logging
 import signal
+import uuid
 import time
 import math
 import json
@@ -398,7 +399,7 @@ def move_and_connect(file_path, compression, workers, batch_size):
 		else:
 			pool = None
 
-		tmp_file_path = file_path.with_name(f"{file_path.stem}_tmp{file_path.suffix}")
+		tmp_file_path = file_path.with_name(f"{file_path.stem}_{uuid.uuid4().hex}{file_path.suffix}")
 		tmp_file_path.unlink(missing_ok=True)
 
 		conn, cur = connect(tmp_file_path, True)

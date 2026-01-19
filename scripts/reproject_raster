@@ -18,6 +18,7 @@ import rasterio
 import logging
 import signal
 import numpy
+import uuid
 import time
 import sys
 
@@ -186,7 +187,7 @@ if __name__ == "__main__":
 			if src.colorinterp[0].name == "palette" and src.colormap(1):
 				expand = args.expand or "rgba"
 
-				tmp_file_path = args.input.with_name(f"{args.input.stem}_tmp{args.input.suffix}")
+				tmp_file_path = args.input.with_name(f"{args.input.stem}_{uuid.uuid4().hex}{args.input.suffix}")
 				tmp_file_path.unlink(missing_ok=True)
 
 				LOGGER.info(f"Palette band found. Expanding {expand} '{args.input}' -> '{tmp_file_path}'...")
