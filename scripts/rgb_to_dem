@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
 	t0 = time.time()
 
-	with rasterio.open(args.input) as src:
+	with rasterio.open(args.input, "r") as src:
 		profile = src.profile.copy()
 		profile.update(
 			dtype="float64",

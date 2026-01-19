@@ -175,7 +175,7 @@ if __name__ == "__main__":
 
 	t0 = time.time()
 
-	with rasterio.open(args.input) as src:
+	with rasterio.open(args.input, "r") as src:
 		args.output.unlink(missing_ok=True)
 
 		if args.target:
@@ -191,7 +191,7 @@ if __name__ == "__main__":
 
 				LOGGER.info(f"Reprojecting '{tmp_file_path}' -> '{args.output}'...")
 
-				with rasterio.open(tmp_file_path) as tmp_src:
+				with rasterio.open(tmp_file_path, "r") as tmp_src:
 					reproject_raster(tmp_src, args.output, workers, args.compression, args.resampling, args.target)
 
 				tmp_file_path.unlink(missing_ok=True)
