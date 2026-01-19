@@ -69,7 +69,7 @@ def expand_to_rgba(src, dst_path, compression, rgb):
 		count=band_count,
 		dtype="uint8",
 		photometric="RGB",
-		interleave="pixel",
+		interleave="PIXEL",
 		tiled=True,
 		blockxsize=512,
 		blockysize=512,
@@ -130,6 +130,11 @@ def reproject_raster(src, dst_path, workers, compression, resampling, dst_crs):
 		blockysize=512,
 		bigtiff="YES",
 	)
+
+	if src.count == 1:
+		profile.update(
+			photometric="MINISBLACK"
+		)
 
 	if compression:
 		profile.update(
@@ -208,6 +213,25 @@ if __name__ == "__main__":
 			LOGGER.info(f"Copying '{args.input}' -> '{args.output}'...")
 
 			profile = src.profile.copy()
+
+			profile.update(
+				tiled=True,
+				blockxsize=512,
+				blockysize=512,
+				bigtiff="YES",
+			)
+
+			if src.count == 1:
+				profile.update(
+					photometric="MINISBLACK"
+				)
+
+			if args.compression:
+				profile.update(
+					compress="LZW",
+					predictor=2,
+				)
+
 			with rasterio.open(args.output, "w", **profile) as dst:
 				for i in range(1, src.count + 1):
 					dst.write(src.read(i), i)
