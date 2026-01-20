@@ -445,7 +445,7 @@ def move_and_connect(file_path, compression, workers, batch_size):
 
 		conn.close()
 
-	tmp_file_path.replace(file_path)
+		tmp_file_path.replace(file_path)
 
 	return connect(file_path)
 
