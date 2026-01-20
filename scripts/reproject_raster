@@ -19,6 +19,7 @@ import rasterio
 import logging
 import signal
 import numpy
+import uuid
 import time
 import sys
 
@@ -49,8 +50,8 @@ def setup_signals():
 # ========= COMMAND =========
 def setup_command():
 	parser = argparse.ArgumentParser(description="Reproject raster")
-	parser.add_argument("-i", "--input", required=True, type=Path, help="Input raster file path")
 	parser.add_argument("-o", "--output", required=True, type=Path, help="Output raster file path")
+	parser.add_argument("-i", "--input", required=False, type=Path, help="Input raster file path")
 	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output")
 	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to reproject")
@@ -281,6 +282,7 @@ def reproject_raster(src, dst_path, workers, compression, resampling, dst_crs, o
 				ColorInterp.alpha,
 			)
 
+
 # ========= MAIN =========
 if __name__ == "__main__":
 	if threading.current_thread() is threading.main_thread():
@@ -289,6 +291,8 @@ if __name__ == "__main__":
 	parser = setup_command()
 
 	args = parser.parse_args()
+
+	input = args.input if args.input else args.output
 
 	# Parse resampling
 	resampling = Resampling.lanczos
@@ -301,12 +305,19 @@ if __name__ == "__main__":
 
 	workers = max(1, args.workers)
 
-	LOGGER.info(f"Reprojecting '{args.input}' -> '{args.output}'...")
+	LOGGER.info(f"Reprojecting '{input}' -> '{args.output}'...")
 
 	t0 = time.time()
 
-	with rasterio.open(args.input, "r") as src:
-		args.output.unlink(missing_ok=True)
+	tmp_file_path = None
+
+	with rasterio.open(input, "r") as src:
+		if input == args.output:
+			tmp_file_path = input.with_name(f"{input.stem}_{uuid.uuid4().hex}{input.suffix}")
+		else:
+			tmp_file_path = args.output
+
+			tmp_file_path.unlink(missing_ok=True)
 
 		working_ds = src
 
@@ -316,12 +327,16 @@ if __name__ == "__main__":
 			working_ds = WarpedVRT(src, crs=args.target, resampling=resampling)
 
 		if args.expand:
-			LOGGER.info(f"Expanding {args.expand} '{args.input}' -> '{args.output}'...")
+			LOGGER.info(f"Expanding {args.expand} '{input}' -> '{tmp_file_path}'...")
 
-			expand_to_rgba(working_ds, args.output, args.compression, args.expand == "rgb", args.output_driver)
+			expand_to_rgba(working_ds, tmp_file_path, args.compression, args.expand == "rgb", args.output_driver)
 		else:
-			LOGGER.info(f"Copying '{args.input}' -> '{args.output}'...")
+			LOGGER.info(f"Copying '{input}' -> '{tmp_file_path}'...")
 
-			copy_data(working_ds, args.output, args.compression, args.output_driver)
+			copy_data(working_ds, tmp_file_path, args.compression, args.output_driver)
 
-	LOGGER.info(f"Reprojected '{args.input}' -> '{args.output}' in {time.time() - t0:.2f}s!")
+	if input == args.output:
+		if tmp_file_path:
+			tmp_file_path.replace(input)
+
+	LOGGER.info(f"Reprojected '{input}' -> '{args.output}' in {time.time() - t0:.2f}s!")

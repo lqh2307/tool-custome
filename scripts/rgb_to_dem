@@ -18,6 +18,7 @@ import rasterio
 import logging
 import signal
 import numpy
+import uuid
 import time
 import sys
 
@@ -48,8 +49,8 @@ def setup_signals():
 # ========= COMMAND =========
 def setup_command():
 	parser = argparse.ArgumentParser(description="Convert RGB raster (Terrain-RGB) to DEM raster")
-	parser.add_argument("-in", "--input", required=True, type=Path, help="Input RGB raster file path")
 	parser.add_argument("-out", "--output", required=True, type=Path, help="Output DEM raster file path")
+	parser.add_argument("-in", "--input", required=False, type=Path, help="Input RGB raster file path")
 	parser.add_argument("-b", "--base-val", required=False, type=float, default=-10000, help="Base value")
 	parser.add_argument("-i", "--interval", required=False, type=float, default=0.1, help="Interval")
 	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
@@ -81,11 +82,15 @@ if __name__ == "__main__":
 
 	args = parser.parse_args()
 
-	LOGGER.info(f"Converting RGB raster (Terrain-RGB) to DEM raster '{args.input}' -> '{args.output}'...")
+	input = args.input if args.input else args.output
+
+	LOGGER.info(f"Converting RGB raster (Terrain-RGB) to DEM raster '{input}' -> '{args.output}'...")
 
 	t0 = time.time()
 
-	with rasterio.open(args.input, "r") as src:
+	tmp_file_path = None
+
+	with rasterio.open(input, "r") as src:
 		profile = src.profile.copy()
 		profile.update(
 			dtype="float64",
@@ -109,9 +114,14 @@ if __name__ == "__main__":
 				predictor=3,
 			)
 
-		args.output.unlink(missing_ok=True)
+		if input == args.output:
+			tmp_file_path = input.with_name(f"{input.stem}_{uuid.uuid4().hex}{input.suffix}")
+		else:
+			tmp_file_path = args.output
 
-		with rasterio.open(args.output, "w", **profile) as dst:
+			tmp_file_path.unlink(missing_ok=True)
+
+		with rasterio.open(tmp_file_path, "w", **profile) as dst:
 			block_h, block_w = src.block_shapes[0]
 
 			convert_args = {
@@ -152,4 +162,8 @@ if __name__ == "__main__":
 					pool.close()
 					pool.join()
 
-	LOGGER.info(f"Converted RGB raster (Terrain-RGB) to DEM raster '{args.input}' -> '{args.output}' in {time.time() - t0:.2f}s!")
+	if input == args.output:
+		if tmp_file_path:
+			tmp_file_path.replace(input)
+
+	LOGGER.info(f"Converted RGB raster (Terrain-RGB) to DEM raster '{input}' -> '{args.output}' in {time.time() - t0:.2f}s!")
