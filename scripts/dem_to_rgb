@@ -56,6 +56,7 @@ def setup_command():
 	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output")
 	parser.add_argument("-od", "--output-driver", required=False, type=str, default="GTiff", help="Output driver")
+	parser.add_argument("-bc", "--band-count", required=False, choices=[3, 4], default=3, help="Output band count")
 
 	return parser
 
@@ -64,12 +65,20 @@ def setup_command():
 def data_to_rgb(args):
 	data, window, convert_args = args
 
+	mask = numpy.isclose(data, convert_args["nodata"]) if convert_args["nodata"] is not None else None
+
 	data = (data.astype(numpy.float64, copy=False) - convert_args["base_val"]) / convert_args["interval"]
 
-	rgb = numpy.empty((3, *data.shape), dtype=numpy.uint8)
+	rgb = numpy.empty((convert_args["band_count"], *data.shape), dtype=numpy.uint8)
 	rgb[2] = data % 256
 	rgb[1] = (data // 256) % 256
 	rgb[0] = (data // (256 * 256)) % 256
+
+	if convert_args["band_count"] == 4:
+		rgb[3] = 255
+
+		if mask is not None:
+			rgb[3][mask] = 0
 
 	return rgb, window
 
@@ -95,9 +104,9 @@ if __name__ == "__main__":
 		profile = src.profile.copy()
 		profile.update(
 			dtype="uint8",
-			count=3,
+			count=args.band_count,
 			photometric="RGB",
-			nodata=0,
+			nodata=None,
 			tiled=True,
 			blockxsize=512,
 			blockysize=512,
@@ -128,6 +137,8 @@ if __name__ == "__main__":
 			convert_args = {
 				"base_val": args.base_val,
 				"interval": args.interval,
+				"nodata": src.nodata,
+				"band_count": args.band_count,
 			}
 
 			def window_generator():
@@ -156,12 +167,20 @@ if __name__ == "__main__":
 						rgb, window = data_to_rgb(args)
 
 						dst.write(rgb, window=window)
-			
-				dst.colorinterp = (
-					ColorInterp.red,
-					ColorInterp.green,
-					ColorInterp.blue,
-				)
+
+				if args.band_count == 3:
+					dst.colorinterp = (
+						ColorInterp.red,
+						ColorInterp.green,
+						ColorInterp.blue,
+					)
+				else:
+					dst.colorinterp = (
+						ColorInterp.red,
+						ColorInterp.green,
+						ColorInterp.blue,
+						ColorInterp.alpha,
+					)
 			finally:
 				if pool:
 					pool.close()

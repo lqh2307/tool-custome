@@ -66,11 +66,18 @@ def rgb_to_data(args):
 
 	rgb = rgb.astype(numpy.float64, copy=False)
 
-	return convert_args["base_val"] + (
+	data = convert_args["base_val"] + (
 		rgb[0] * 256 * 256 +
 		rgb[1] * 256 +
 		rgb[2]
 	) * convert_args["interval"], window
+
+	if convert_args["alpha_index"] is not None:
+		mask = rgb[convert_args["alpha_index"]] == 0
+
+		data[mask] = convert_args["base_val"]
+
+	return data, window
 
 
 # ========= MAIN =========
@@ -127,6 +134,7 @@ if __name__ == "__main__":
 			convert_args = {
 				"base_val": args.base_val,
 				"interval": args.interval,
+				"alpha_index": 3 if src.count == 4 else None,
 			}
 
 			def window_generator():
@@ -136,7 +144,7 @@ if __name__ == "__main__":
 					for x in range(0, src.width, block_w):
 						window = Window(x, y, min(block_w, src.width - x), h)
 
-						yield (src.read([1, 2, 3], window=window), window, convert_args)
+						yield (src.read([1, 2, 3] if src.count == 3 else [1, 2, 3, 4], window=window), window, convert_args)
 
 			workers = max(1, args.workers)
 
