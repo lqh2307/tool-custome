@@ -99,10 +99,7 @@ def expand_to_rgba(src, dst_path, compression, rgb, output_driver="GTiff"):
 		else:
 			r, g, b, a = v
 
-		if rgb:
-			lut[k] = (r, g, b)
-		else:
-			lut[k] = (r, g, b, a)
+		lut[k] = (r, g, b) if rgb else (r, g, b, a)
 
 	if src.nodata is not None:
 		ni = int(src.nodata)
@@ -319,21 +316,27 @@ if __name__ == "__main__":
 
 			tmp_file_path.unlink(missing_ok=True)
 
-		working_ds = src
+	if args.target:
+			LOGGER.info(f"Creating VRT to {args.target}...")
 
-		if args.target:
-			LOGGER.info(f"Creating WarpedVRT to {args.target}...")
+			with WarpedVRT(src, crs=args.target, resampling=resampling) as vrt_src:
+				if args.expand:
+					LOGGER.info(f"Expanding {args.expand} '{input}' -> '{tmp_file_path}'...")
 
-			working_ds = WarpedVRT(src, crs=args.target, resampling=resampling)
+					expand_to_rgba(vrt_src, tmp_file_path, args.compression, args.expand == "rgb", args.output_driver)
+				else:
+					LOGGER.info(f"Copying '{input}' -> '{tmp_file_path}'...")
 
-		if args.expand:
-			LOGGER.info(f"Expanding {args.expand} '{input}' -> '{tmp_file_path}'...")
+					copy_data(vrt_src, tmp_file_path, args.compression, args.output_driver)
+	else:
+			if args.expand:
+				LOGGER.info(f"Expanding {args.expand} '{input}' -> '{tmp_file_path}'...")
 
-			expand_to_rgba(working_ds, tmp_file_path, args.compression, args.expand == "rgb", args.output_driver)
-		else:
-			LOGGER.info(f"Copying '{input}' -> '{tmp_file_path}'...")
+				expand_to_rgba(src, tmp_file_path, args.compression, args.expand == "rgb", args.output_driver)
+			else:
+				LOGGER.info(f"Copying '{input}' -> '{tmp_file_path}'...")
 
-			copy_data(working_ds, tmp_file_path, args.compression, args.output_driver)
+				copy_data(src, tmp_file_path, args.compression, args.output_driver)
 
 	if input == args.output:
 		if tmp_file_path:
