@@ -257,6 +257,8 @@ def reproject_raster(src, dst_path, workers, compression, resampling, dst_crs, o
 				dst_crs=dst_crs,
 				resampling=resampling,
 				num_threads=workers,
+				src_nodata=src.nodata,
+				dst_nodata=src.nodata,
 			)
 
 		if paletted:
@@ -293,11 +295,11 @@ if __name__ == "__main__":
 
 	# Parse resampling
 	resampling = Resampling.lanczos
-	if resampling == "nearest":
+	if args.resampling == "nearest":
 		resampling = Resampling.nearest
-	elif resampling == "bilinear":
+	elif args.resampling == "bilinear":
 		resampling = Resampling.bilinear
-	elif resampling == "cubic":
+	elif args.resampling == "cubic":
 		resampling = Resampling.cubic
 
 	workers = max(1, args.workers)
@@ -319,7 +321,7 @@ if __name__ == "__main__":
 		if args.target:
 			LOGGER.info(f"Creating VRT to {args.target}...")
 
-			with WarpedVRT(src, crs=args.target, resampling=resampling) as vrt_src:
+			with WarpedVRT(src, crs=args.target, resampling=resampling, nodata=src.nodata, add_alpha=True) as vrt_src:
 				if args.expand:
 					LOGGER.info(f"Expanding {args.expand} '{input}' -> '{tmp_file_path}'...")
 
