@@ -103,6 +103,7 @@ if __name__ == "__main__":
 			dtype="float64",
 			count=1,
 			photometric="MINISBLACK",
+			interleave="PIXEL",
 			nodata=args.base_val,
 			tiled=True,
 			blockxsize=512,

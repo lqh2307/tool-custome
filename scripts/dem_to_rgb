@@ -55,8 +55,8 @@ def setup_command():
 	parser.add_argument("-i", "--interval", required=False, type=float, default=0.1, help="Interval")
 	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression for output")
+	parser.add_argument("-e", "--expand", required=False, choices=["rgb", "rgba"], help="Expand to RGB/RGBA")
 	parser.add_argument("-od", "--output-driver", required=False, type=str, default="GTiff", help="Output driver")
-	parser.add_argument("-bc", "--band-count", required=False, choices=[3, 4], default=3, help="Output band count")
 
 	return parser
 
@@ -69,7 +69,7 @@ def data_to_rgb(args):
 
 	data = (data.astype(numpy.float64, copy=False) - convert_args["base_val"]) / convert_args["interval"]
 
-	rgb = numpy.empty((convert_args["band_count"], *data.shape), dtype=numpy.uint8)
+	rgb = numpy.zeros((convert_args["band_count"], *data.shape), dtype=numpy.uint8)
 	rgb[2] = data % 256
 	rgb[1] = (data // 256) % 256
 	rgb[0] = (data // (256 * 256)) % 256
@@ -94,6 +94,8 @@ if __name__ == "__main__":
 
 	input = args.input if args.input else args.output
 
+	band_count = 3 if args.expand == "rgb" else 4
+
 	LOGGER.info(f"Converting DEM raster to RGB raster (Terrain-RGB) '{input}' -> '{args.output}'...")
 
 	t0 = time.time()
@@ -104,9 +106,11 @@ if __name__ == "__main__":
 		profile = src.profile.copy()
 		profile.update(
 			dtype="uint8",
-			count=args.band_count,
+			count=band_count,
 			photometric="RGB",
-			nodata=None,
+			interleave="PIXEL",
+			extrasamples="ALPHA" if band_count == 4 else None,
+			nodata=0,
 			tiled=True,
 			blockxsize=512,
 			blockysize=512,
@@ -138,7 +142,7 @@ if __name__ == "__main__":
 				"base_val": args.base_val,
 				"interval": args.interval,
 				"nodata": src.nodata,
-				"band_count": args.band_count,
+				"band_count": band_count,
 			}
 
 			def window_generator():
@@ -168,7 +172,7 @@ if __name__ == "__main__":
 
 						dst.write(rgb, window=window)
 
-				if args.band_count == 3:
+				if band_count == 3:
 					dst.colorinterp = (
 						ColorInterp.red,
 						ColorInterp.green,

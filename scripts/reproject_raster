@@ -72,6 +72,7 @@ def expand_to_rgba(src, dst_path, compression, rgb, output_driver="GTiff"):
 		dtype="uint8",
 		photometric="RGB",
 		interleave="PIXEL",
+		extrasamples="ALPHA" if band_count == 4 else None,
 		tiled=True,
 		blockxsize=512,
 		blockysize=512,
