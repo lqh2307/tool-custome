@@ -1,6 +1,2 @@
 *
-!tilemaker/tilemaker
-!gdal/gdal
-!osmium-tool/osmium-tool
-!scripts
-!tippecanoe/tippecanoe
+!mapserver/mapserver
