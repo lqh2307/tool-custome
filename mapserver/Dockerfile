@@ -33,8 +33,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 
 COPY ./mapserver .
 
-RUN cd ./mapserver \
-	&& mkdir -p ./build \
+RUN mkdir -p ./build \
 	&& cd ./build \
 	&& cmake .. \
 		-DCMAKE_BUILD_TYPE=Release \
@@ -43,9 +42,7 @@ RUN cd ./mapserver \
 		-DWITH_CLIENT_WFS=ON \
 		-DWITH_SOS=ON \
 	&& cmake --build . --parallel $(nproc) \
-	&& cmake --build . --target install \
-	&& cd ../.. \
-	&& rm -rf ./mapserver
+	&& cmake --build . --target install
 
 
 # Build target
