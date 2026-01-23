@@ -1,0 +1,36 @@
+{% include "header.html" %}
+
+<h1>{{ template.title }} - Collection: {{ response.title }}</h1>
+
+<p>{{ response.description }}</p>
+{% if existsIn(response, "keywords") and length(response.keywords) > 0 %}
+<h2>Keywords</h2>
+<ul>
+    {% for keyword in response.keywords %}
+  <li> {{ keyword }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+{% if existsIn(response, "storageCrs") %}
+<h2>Storage CRS</h2>
+<a href="{{ response.storageCrs }}">{{ response.storageCrs }}</a>
+{% endif %}
+
+{% if existsIn(response, "crs") %}
+<h2>Supported CRS</h2>
+<ul>
+{% for href in response.crs %}
+<li> <a href="{{ href }}">{{ href }}</a></li>
+{% endfor %}
+</ul>
+{% endif %}
+
+<h2>Links</h2>
+<ul>
+{% for link in response.links %}
+<li> <a href="{{ link.href }}">{{ link.title }}</a></li>
+  {% endfor %}
+</ul>
+
+{% include "footer.html" %}
