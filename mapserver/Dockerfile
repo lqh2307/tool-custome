@@ -30,7 +30,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libharfbuzz-dev \
 		libcairo2-dev \
 		librsvg2-dev \
-		libpcre3-dev \
+		libpcre2-dev \
 		libgd-dev \
 		libfcgi-dev \
 		zlib1g-dev \
@@ -76,7 +76,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libharfbuzz0b \
 		libcairo2 \
 		librsvg2-2 \
-		libpcre3 \
+		libpcre2-posix \
 		libgd3 \
 		libfcgi0t64 \
 		spawn-fcgi \
