@@ -1,5 +1,5 @@
-ARG BUILDER_IMAGE=ubuntu:24.04
-ARG TARGET_IMAGE=ubuntu:24.04
+ARG BUILDER_IMAGE=ghcr.io/osgeo/gdal:ubuntu-small-3.12.1
+ARG TARGET_IMAGE=ghcr.io/osgeo/gdal:ubuntu-small-3.12.1
 
 # Build mapserver
 FROM ${BUILDER_IMAGE} AS mapserver-builder
@@ -11,22 +11,28 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
 		build-essential \
 		cmake \
+		swig \
+		python3-dev \
+		python3-setuptools \
 		libprotobuf-c-dev \
+		protobuf-c-compiler \
 		libpng-dev \
 		libjpeg-dev \
 		libgif-dev \
 		libproj-dev \
-		libgdal-dev \
 		libgeos-dev \
 		libxml2-dev \
 		libcurl4-openssl-dev \
 		libsqlite3-dev \
 		libpq-dev \
-		libfcgi-dev \
 		libfreetype6-dev \
 		libfribidi-dev \
 		libharfbuzz-dev \
 		libcairo2-dev \
+		librsvg2-dev \
+		libpcre3-dev \
+		libgd-dev \
+		libfcgi-dev \
 		zlib1g-dev \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
@@ -53,22 +59,27 @@ ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
+		python3 \
+		python3-lxml \
 		libprotobuf-c1 \
 		libpng16-16t64 \
 		libjpeg-turbo8 \
 		libgif7 \
 		libproj25 \
-		libgdal34 \
 		libgeos-c1t64 \
 		libxml2 \
 		libcurl4t64 \
 		libsqlite3-0 \
 		libpq5 \
-		libfcgi0t64 \
 		libfreetype6 \
 		libfribidi0 \
 		libharfbuzz0b \
 		libcairo2 \
+		librsvg2-2 \
+		libpcre3 \
+		libgd3 \
+		libfcgi0t64 \
+		spawn-fcgi \
 		zlib1g \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \

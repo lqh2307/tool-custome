@@ -105,6 +105,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libhdf5-serial-dev \
 		libxml2-dev \
 		libcairo2-dev \
+		libpcre3-dev \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -172,6 +173,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		python3-numpy \
 		python3-rasterio \
 		python3-pil \
+		python3-jsonschema \
 		liblua5.4-0 \
 		shapelib \
 		libsqlite3-0 \
@@ -209,6 +211,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libhdf5-103-1 \
 		libxml2 \
 		libcairo2 \
+		libpcre3 \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
