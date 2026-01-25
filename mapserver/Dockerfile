@@ -76,7 +76,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libharfbuzz0b \
 		libcairo2 \
 		librsvg2-2 \
-		libpcre2-posix \
+		libpcre2-posix3 \
 		libgd3 \
 		libfcgi0t64 \
 		spawn-fcgi \
