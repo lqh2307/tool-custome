@@ -103,6 +103,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
     libmuparser-dev \ 
 		libhdf4-alt-dev \
 		libhdf5-serial-dev \
+		libxml2-dev \
+		libcairo2-dev \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -205,7 +207,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libtcmalloc-minimal4 \
 		libhdf4-0-alt \
 		libhdf5-103-1 \
-		libhdf5-cpp-103-1 \
+		libxml2 \
+		libcairo2 \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
