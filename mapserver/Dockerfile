@@ -11,9 +11,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
 		build-essential \
 		cmake \
-		swig \
-		python3-dev \
-		python3-setuptools \
 		libprotobuf-c-dev \
 		protobuf-c-compiler \
 		libpng-dev \
@@ -59,8 +56,6 @@ ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
-		python3 \
-		python3-lxml \
 		libprotobuf-c1 \
 		libpng16-16t64 \
 		libjpeg-turbo8 \
