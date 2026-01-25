@@ -123,7 +123,7 @@ VRTSourcedRasterBand::~VRTSourcedRasterBand()
 
 bool VRTSourcedRasterBand::CanIRasterIOBeForwardedToEachSource(
     GDALRWFlag eRWFlag, int nXOff, int nYOff, int nXSize, int nYSize,
-    int nBufXSize, int nBufYSize, GDALRasterIOExtraArg *psExtraArg) const
+    int nBufXSize, int nBufYSize, const GDALRasterIOExtraArg *psExtraArg) const
 {
     const auto IsNonNearestInvolved = [this, psExtraArg]
     {
@@ -131,12 +131,12 @@ bool VRTSourcedRasterBand::CanIRasterIOBeForwardedToEachSource(
         {
             return true;
         }
-        for (auto &poSource : m_papoSources)
+        for (const auto &poSource : m_papoSources)
         {
             if (poSource->GetType() == VRTComplexSource::GetTypeStatic())
             {
-                auto *const poComplexSource =
-                    static_cast<VRTComplexSource *>(poSource.get());
+                const auto *const poComplexSource =
+                    static_cast<const VRTComplexSource *>(poSource.get());
                 const auto &osSourceResampling =
                     poComplexSource->GetResampling();
                 if (!osSourceResampling.empty() &&
@@ -455,6 +455,29 @@ void VRTSourcedRasterBandRasterIOJob::Func(void *pData)
     }
 
     ++(*psJob->pnCompletedJobs);
+}
+
+/************************************************************************/
+/*                  MayMultiBlockReadingBeMultiThreaded()               */
+/************************************************************************/
+
+bool VRTSourcedRasterBand::MayMultiBlockReadingBeMultiThreaded() const
+{
+    GDALRasterIOExtraArg sExtraArg;
+    INIT_RASTERIO_EXTRA_ARG(sExtraArg);
+    sExtraArg.dfXOff = 0;
+    sExtraArg.dfYOff = 0;
+    sExtraArg.dfXSize = nRasterXSize;
+    sExtraArg.dfYSize = nRasterYSize;
+    int nContributingSources = 0;
+    auto l_poDS = dynamic_cast<VRTDataset *>(poDS);
+    return l_poDS &&
+           CanIRasterIOBeForwardedToEachSource(GF_Read, 0, 0, nRasterXSize,
+                                               nRasterYSize, nRasterXSize,
+                                               nRasterYSize, &sExtraArg) &&
+           CanMultiThreadRasterIO(0, 0, nRasterXSize, nRasterYSize,
+                                  nContributingSources) &&
+           nContributingSources > 1 && VRTDataset::GetNumThreads(l_poDS) > 1;
 }
 
 /************************************************************************/
@@ -1112,7 +1135,7 @@ double VRTSourcedRasterBand::GetMinimum(int *pbSuccess)
         if (iSource == 0 || dfSourceMin < dfMin)
         {
             dfMin = dfSourceMin;
-            if (dfMin == 0 && eDataType == GDT_Byte)
+            if (dfMin == 0 && eDataType == GDT_UInt8)
                 break;
         }
         if (m_papoSources.size() > 1)
@@ -1190,7 +1213,7 @@ double VRTSourcedRasterBand::GetMaximum(int *pbSuccess)
         if (iSource == 0 || dfSourceMax > dfMax)
         {
             dfMax = dfSourceMax;
-            if (dfMax == 255.0 && eDataType == GDT_Byte)
+            if (dfMax == 255.0 && eDataType == GDT_UInt8)
                 break;
         }
         if (m_papoSources.size() > 1)
@@ -1462,7 +1485,7 @@ CPLErr VRTSourcedRasterBand::ComputeRasterMinMax(int bApproxOK,
         }
 
         bool bSignedByte = false;
-        if (eDataType == GDT_Byte)
+        if (eDataType == GDT_UInt8)
         {
             EnablePixelTypeSignedByteWarning(false);
             const char *pszPixelType =
@@ -1534,7 +1557,7 @@ CPLErr VRTSourcedRasterBand::ComputeRasterMinMax(int bApproxOK,
             }
 
             // Early exit if we know we reached theoretical bounds
-            if (eDataType == GDT_Byte && !bSignedByte && dfGlobalMin == 0.0 &&
+            if (eDataType == GDT_UInt8 && !bSignedByte && dfGlobalMin == 0.0 &&
                 dfGlobalMax == 255.0)
             {
                 break;
@@ -2924,7 +2947,7 @@ const char *VRTSourcedRasterBand::GetMetadataItem(const char *pszName,
 /*                            GetMetadata()                             */
 /************************************************************************/
 
-char **VRTSourcedRasterBand::GetMetadata(const char *pszDomain)
+CSLConstList VRTSourcedRasterBand::GetMetadata(const char *pszDomain)
 
 {
     /* ==================================================================== */
@@ -3052,7 +3075,7 @@ CPLErr VRTSourcedRasterBand::SetMetadataItem(const char *pszName,
 /*                            SetMetadata()                             */
 /************************************************************************/
 
-CPLErr VRTSourcedRasterBand::SetMetadata(char **papszNewMD,
+CPLErr VRTSourcedRasterBand::SetMetadata(CSLConstList papszNewMD,
                                          const char *pszDomain)
 
 {

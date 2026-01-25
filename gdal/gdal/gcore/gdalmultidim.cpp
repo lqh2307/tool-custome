@@ -1086,7 +1086,7 @@ bool GDALGroup::CopyFrom(const std::shared_ptr<GDALGroup> &poDstRootGroup,
 
                 switch (eAutoScaleType)
                 {
-                    case GDT_Byte:
+                    case GDT_UInt8:
                         setDTMinMax(GByte);
                         break;
                     case GDT_Int8:
@@ -1747,7 +1747,7 @@ bool GDALExtendedDataType::CopyValue(const void *pSrc,
         {
             case GDT_Unknown:
                 break;
-            case GDT_Byte:
+            case GDT_UInt8:
                 str = CPLSPrintf("%d", *static_cast<const GByte *>(pSrc));
                 break;
             case GDT_Int8:
@@ -6735,7 +6735,7 @@ class GDALMDArrayMask final : public GDALPamMDArray
 {
   private:
     std::shared_ptr<GDALMDArray> m_poParent{};
-    GDALExtendedDataType m_dt{GDALExtendedDataType::Create(GDT_Byte)};
+    GDALExtendedDataType m_dt{GDALExtendedDataType::Create(GDT_UInt8)};
     double m_dfMissingValue = 0.0;
     bool m_bHasMissingValue = false;
     double m_dfFillValue = 0.0;
@@ -6937,8 +6937,9 @@ bool GDALMDArrayMask::Init(CSLConstList papszOptions)
         {
             const auto eType = poFlagValues->GetDataType().GetNumericDataType();
             // We could support Int64 or UInt64, but more work...
-            if (eType != GDT_Byte && eType != GDT_Int8 && eType != GDT_UInt16 &&
-                eType != GDT_Int16 && eType != GDT_UInt32 && eType != GDT_Int32)
+            if (eType != GDT_UInt8 && eType != GDT_Int8 &&
+                eType != GDT_UInt16 && eType != GDT_Int16 &&
+                eType != GDT_UInt32 && eType != GDT_Int32)
             {
                 CPLError(CE_Failure, CPLE_NotSupported,
                          "Unsupported data type for flag_values attribute: %s",
@@ -6951,8 +6952,9 @@ bool GDALMDArrayMask::Init(CSLConstList papszOptions)
         {
             const auto eType = poFlagMasks->GetDataType().GetNumericDataType();
             // We could support Int64 or UInt64, but more work...
-            if (eType != GDT_Byte && eType != GDT_Int8 && eType != GDT_UInt16 &&
-                eType != GDT_Int16 && eType != GDT_UInt32 && eType != GDT_Int32)
+            if (eType != GDT_UInt8 && eType != GDT_Int8 &&
+                eType != GDT_UInt16 && eType != GDT_Int16 &&
+                eType != GDT_UInt32 && eType != GDT_Int32)
             {
                 CPLError(CE_Failure, CPLE_NotSupported,
                          "Unsupported data type for flag_masks attribute: %s",
@@ -7114,7 +7116,7 @@ bool GDALMDArrayMask::IRead(const GUInt64 *arrayStartIdx, const size_t *count,
         GByte abyOne[16];  // 16 is sizeof GDT_CFloat64
         CPLAssert(nBufferDTSize <= 16);
         const GByte flag = 1;
-        GDALCopyWords64(&flag, GDT_Byte, 0, abyOne,
+        GDALCopyWords64(&flag, GDT_UInt8, 0, abyOne,
                         bufferDataType.GetNumericDataType(), 0, 1);
 
     lbl_next_depth:
@@ -7179,7 +7181,7 @@ bool GDALMDArrayMask::IRead(const GUInt64 *arrayStartIdx, const size_t *count,
 
     switch (oTmpBufferDT.GetNumericDataType())
     {
-        case GDT_Byte:
+        case GDT_UInt8:
             ReadInternal<GByte>(count, bufferStride, bufferDataType, pDstBuffer,
                                 pTempBuffer, oTmpBufferDT,
                                 tmpBufferStrideVector);
@@ -8780,7 +8782,7 @@ class GDALDatasetFromArray final : public GDALPamDataset
 
     ~GDALDatasetFromArray() override;
 
-    CPLErr Close() override
+    CPLErr Close(GDALProgressFunc = nullptr, void * = nullptr) override
     {
         CPLErr eErr = CE_None;
         if (nOpenFlags != OPEN_FLAGS_CLOSED)
@@ -8820,12 +8822,13 @@ class GDALDatasetFromArray final : public GDALPamDataset
         return m_poSRS.get();
     }
 
-    CPLErr SetMetadata(char **papszMetadata, const char *pszDomain) override
+    CPLErr SetMetadata(CSLConstList papszMetadata,
+                       const char *pszDomain) override
     {
         return m_oMDD.SetMetadata(papszMetadata, pszDomain);
     }
 
-    char **GetMetadata(const char *pszDomain) override
+    CSLConstList GetMetadata(const char *pszDomain) override
     {
         return m_oMDD.GetMetadata(pszDomain);
     }

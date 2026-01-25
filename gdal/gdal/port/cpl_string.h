@@ -110,7 +110,22 @@ int CPL_DLL CPLTestBoolean(const char *pszValue);
 bool CPL_DLL CPLTestBool(const char *pszValue);
 bool CPL_DLL CPLFetchBool(CSLConstList papszStrList, const char *pszKey,
                           bool bDefault);
+#ifdef __cplusplus
+CPL_C_END
 
+/*! @cond Doxygen_Suppress */
+inline bool CPLFetchBool(CSLConstList papszStrList, const char *pszKey,
+                         int bDefault)
+{
+    return CPLFetchBool(papszStrList, pszKey, bDefault != 0);
+}
+
+bool CPLFetchBool(CSLConstList papszStrList, const char *pszKey,
+                  const char *) = delete;
+
+/*! @endcond */
+CPL_C_START
+#endif
 CPLErr CPL_DLL CPLParseMemorySize(const char *pszValue, GIntBig *pnValue,
                                   bool *pbUnitSpecified);
 
@@ -424,6 +439,10 @@ extern "C++"
         CPLSTRING_METHOD_DLL bool endsWith(const std::string &osStr) const;
 
         CPLSTRING_METHOD_DLL CPLString URLEncode() const;
+
+        CPLSTRING_METHOD_DLL CPLString SQLQuotedIdentifier() const;
+
+        CPLSTRING_METHOD_DLL CPLString SQLQuotedLiteral() const;
 
       private:
         operator void *(void) = delete;

@@ -1718,7 +1718,8 @@ VSICurlHandle::GetRedirectURLIfValid(bool &bHasExpired,
 
     if (m_pszURL != osURL)
     {
-        const char *pszAuthorizationHeaderAllowed = CPLGetConfigOption(
+        const char *pszAuthorizationHeaderAllowed = VSIGetPathSpecificOption(
+            m_osFilename.c_str(),
             "CPL_VSIL_CURL_AUTHORIZATION_HEADER_ALLOWED_IF_REDIRECT",
             "IF_SAME_HOST");
         if (EQUAL(pszAuthorizationHeaderAllowed, "IF_SAME_HOST"))
@@ -2320,14 +2321,13 @@ void VSICurlHandle::DownloadRegionPostProcess(const vsi_l_offset startOffset,
 /*                                Read()                                */
 /************************************************************************/
 
-size_t VSICurlHandle::Read(void *const pBufferIn, size_t const nSize,
-                           size_t const nMemb)
+size_t VSICurlHandle::Read(void *const pBufferIn, size_t const nBytes)
 {
     NetworkStatisticsFileSystem oContextFS(poFS->GetFSPrefix().c_str());
     NetworkStatisticsFile oContextFile(m_osFilename.c_str());
     NetworkStatisticsAction oContextAction("Read");
 
-    size_t nBufferRequestSize = nSize * nMemb;
+    size_t nBufferRequestSize = nBytes;
     if (nBufferRequestSize == 0)
         return 0;
 
@@ -2453,8 +2453,8 @@ size_t VSICurlHandle::Read(void *const pBufferIn, size_t const nSize,
         }
     }
 
-    const size_t ret = static_cast<size_t>((iterOffset - curOffset) / nSize);
-    if (ret != nMemb)
+    const size_t ret = static_cast<size_t>(iterOffset - curOffset);
+    if (ret != nBytes)
         bEOF = true;
 
     curOffset = iterOffset;
@@ -3715,8 +3715,7 @@ void VSICurlHandle::AdviseRead(int nRanges, const vsi_l_offset *panOffsets,
 /*                               Write()                                */
 /************************************************************************/
 
-size_t VSICurlHandle::Write(const void * /* pBuffer */, size_t /* nSize */,
-                            size_t /* nMemb */)
+size_t VSICurlHandle::Write(const void * /* pBuffer */, size_t /* nBytes */)
 {
     return 0;
 }
@@ -3958,10 +3957,11 @@ void VSICurlFilesystemHandlerBase::AddRegion(const char *pszURL,
 {
     CPLMutexHolder oHolder(&hMutex);
 
-    std::shared_ptr<std::string> value(new std::string());
+    auto value = std::make_shared<std::string>();
     value->assign(pData, nSize);
     GetRegionCache()->insert(
-        FilenameOffsetPair(std::string(pszURL), nFileOffsetStart), value);
+        FilenameOffsetPair(std::string(pszURL), nFileOffsetStart),
+        std::move(value));
 }
 
 /************************************************************************/
@@ -5710,8 +5710,7 @@ vsi_l_offset VSIAppendWriteHandle::Tell()
 /*                               Read()                                 */
 /************************************************************************/
 
-size_t VSIAppendWriteHandle::Read(void * /* pBuffer */, size_t /* nSize */,
-                                  size_t /* nMemb */)
+size_t VSIAppendWriteHandle::Read(void * /* pBuffer */, size_t /* nBytes */)
 {
     CPLError(CE_Failure, CPLE_NotSupported,
              "Read not supported on writable %s files", m_osFSPrefix.c_str());
@@ -5741,13 +5740,12 @@ size_t VSIAppendWriteHandle::ReadCallBackBuffer(char *buffer, size_t size,
 /*                               Write()                                */
 /************************************************************************/
 
-size_t VSIAppendWriteHandle::Write(const void *pBuffer, size_t nSize,
-                                   size_t nMemb)
+size_t VSIAppendWriteHandle::Write(const void *pBuffer, size_t nBytes)
 {
     if (m_bError)
         return 0;
 
-    size_t nBytesToWrite = nSize * nMemb;
+    size_t nBytesToWrite = nBytes;
     if (nBytesToWrite == 0)
         return 0;
 
@@ -5772,7 +5770,7 @@ size_t VSIAppendWriteHandle::Write(const void *pBuffer, size_t nSize,
         m_nCurOffset += nToWriteInBuffer;
         nBytesToWrite -= nToWriteInBuffer;
     }
-    return nMemb;
+    return nBytes;
 }
 
 /************************************************************************/
@@ -6371,7 +6369,7 @@ struct curl_slist *VSICurlSetCreationHeadersFromOptions(
  */
 void VSIInstallCurlFileHandler(void)
 {
-    VSIFilesystemHandler *poHandler = new cpl::VSICurlFilesystemHandler;
+    auto poHandler = std::make_shared<cpl::VSICurlFilesystemHandler>();
     VSIFileManager::InstallHandler("/vsicurl/", poHandler);
     VSIFileManager::InstallHandler("/vsicurl?", poHandler);
 }

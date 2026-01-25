@@ -10,8 +10,6 @@
  * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
-#define OGR_P_WITH_SRS_CACHE
-
 #include "ogrsf_frmts.h"
 #include "cpl_conv.h"
 #include "cpl_http.h"
@@ -567,8 +565,8 @@ GDALDataset *OGRCSWLayer::FetchGetRecords()
         OGRLayer *poLyr = l_poBaseDS->CreateLayer("records");
         OGRFieldDefn oField("raw_xml", OFTString);
         CPL_IGNORE_RET_VAL(poLyr->CreateField(&oField));
-        lru11::Cache<std::string, std::shared_ptr<OGRSpatialReference>>
-            oSRSCache;
+        std::unique_ptr<OGRGML_SRSCache, decltype(&OGRGML_SRSCache_Destroy)>
+            srsCache{OGRGML_SRSCache_Create(), OGRGML_SRSCache_Destroy};
         for (CPLXMLNode *psIter = psSearchResults->psChild; psIter;
              psIter = psIter->psNext)
         {
@@ -633,8 +631,9 @@ GDALDataset *OGRCSWLayer::FetchGetRecords()
                     CPLFree(psBBox->pszValue);
                     psBBox->pszValue = CPLStrdup("gml:Envelope");
                     CPLString osSRS = CPLGetXMLValue(psBBox, "crs", "");
-                    OGRGeometry *poGeom = GML2OGRGeometry_XMLNode(
-                        psBBox, FALSE, oSRSCache, 0, 0, false, true, false);
+                    OGRGeometry *poGeom =
+                        GML2OGRGeometry_XMLNode(psBBox, FALSE, srsCache.get(),
+                                                0, 0, false, true, false);
                     if (poGeom)
                     {
                         bool bLatLongOrder = true;

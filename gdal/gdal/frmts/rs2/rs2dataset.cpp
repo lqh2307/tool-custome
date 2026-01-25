@@ -21,6 +21,8 @@
 #include "gdal_cpp_functions.h"
 #include "ogr_spatialref.h"
 
+#include <algorithm>
+
 typedef enum eCalibration_t
 {
     Sigma0 = 0,
@@ -130,7 +132,7 @@ class RS2Dataset final : public GDALPamDataset
     CPLErr GetGeoTransform(GDALGeoTransform &gt) const override;
 
     char **GetMetadataDomainList() override;
-    char **GetMetadata(const char *pszDomain = "") override;
+    CSLConstList GetMetadata(const char *pszDomain = "") override;
     char **GetFileList(void) override;
 
     static GDALDataset *Open(GDALOpenInfo *);
@@ -215,40 +217,28 @@ CPLErr RS2RasterBand::IReadBlock(int nBlockXOff, int nBlockYOff, void *pImage)
     /*      over-requesting.  We also need to initialize the extra part     */
     /*      of the block to zero.                                           */
     /* -------------------------------------------------------------------- */
-    int nRequestYSize;
-    if ((nBlockYOff + 1) * nBlockYSize > nRasterYSize)
-    {
-        nRequestYSize = nRasterYSize - nBlockYOff * nBlockYSize;
-        memset(pImage, 0,
-               static_cast<size_t>(GDALGetDataTypeSizeBytes(eDataType)) *
-                   nBlockXSize * nBlockYSize);
-    }
-    else
-    {
-        nRequestYSize = nBlockYSize;
-    }
+    const int nYOff = nBlockYOff * nBlockYSize;
+    const int nRequestYSize = std::min(nBlockYSize, nRasterYSize - nYOff);
 
     /*-------------------------------------------------------------------- */
     /*      If the input imagery is tiled, also need to avoid over-        */
     /*      requesting in the X-direction.                                 */
     /* ------------------------------------------------------------------- */
-    int nRequestXSize;
-    if ((nBlockXOff + 1) * nBlockXSize > nRasterXSize)
+    const int nXOff = nBlockXOff * nBlockXSize;
+    const int nRequestXSize = std::min(nBlockXSize, nRasterXSize - nXOff);
+
+    if (nRequestXSize < nBlockXSize || nRequestYSize < nBlockYSize)
     {
-        nRequestXSize = nRasterXSize - nBlockXOff * nBlockXSize;
         memset(pImage, 0,
                static_cast<size_t>(GDALGetDataTypeSizeBytes(eDataType)) *
                    nBlockXSize * nBlockYSize);
     }
-    else
-    {
-        nRequestXSize = nBlockXSize;
-    }
+
     if (eDataType == GDT_CInt16 && poBandFile->GetRasterCount() == 2)
-        return poBandFile->RasterIO(
-            GF_Read, nBlockXOff * nBlockXSize, nBlockYOff * nBlockYSize,
-            nRequestXSize, nRequestYSize, pImage, nRequestXSize, nRequestYSize,
-            GDT_Int16, 2, nullptr, 4, nBlockXSize * 4, 2, nullptr);
+        return poBandFile->RasterIO(GF_Read, nXOff, nYOff, nRequestXSize,
+                                    nRequestYSize, pImage, nRequestXSize,
+                                    nRequestYSize, GDT_Int16, 2, nullptr, 4,
+                                    nBlockXSize * 4, 2, nullptr);
 
     /* -------------------------------------------------------------------- */
     /*      File has one sample marked as sample format void, a 32bits.     */
@@ -256,9 +246,9 @@ CPLErr RS2RasterBand::IReadBlock(int nBlockXOff, int nBlockYOff, void *pImage)
     else if (eDataType == GDT_CInt16 && poBandFile->GetRasterCount() == 1)
     {
         CPLErr eErr = poBandFile->RasterIO(
-            GF_Read, nBlockXOff * nBlockXSize, nBlockYOff * nBlockYSize,
-            nRequestXSize, nRequestYSize, pImage, nRequestXSize, nRequestYSize,
-            GDT_UInt32, 1, nullptr, 4, nBlockXSize * 4, 0, nullptr);
+            GF_Read, nXOff, nYOff, nRequestXSize, nRequestYSize, pImage,
+            nRequestXSize, nRequestYSize, GDT_UInt32, 1, nullptr, 4,
+            nBlockXSize * 4, 0, nullptr);
 
 #ifdef CPL_LSB
         /* First, undo the 32bit swap. */
@@ -276,16 +266,16 @@ CPLErr RS2RasterBand::IReadBlock(int nBlockXOff, int nBlockYOff, void *pImage)
     /*      looks like a 16bit unsigned data too.                           */
     /* -------------------------------------------------------------------- */
     else if (eDataType == GDT_UInt16)
-        return poBandFile->RasterIO(
-            GF_Read, nBlockXOff * nBlockXSize, nBlockYOff * nBlockYSize,
-            nRequestXSize, nRequestYSize, pImage, nRequestXSize, nRequestYSize,
-            GDT_UInt16, 1, nullptr, 2, nBlockXSize * 2, 0, nullptr);
-    else if (eDataType == GDT_Byte)
+        return poBandFile->RasterIO(GF_Read, nXOff, nYOff, nRequestXSize,
+                                    nRequestYSize, pImage, nRequestXSize,
+                                    nRequestYSize, GDT_UInt16, 1, nullptr, 2,
+                                    nBlockXSize * 2, 0, nullptr);
+    else if (eDataType == GDT_UInt8)
         /* Ticket #2104: Support for ScanSAR products */
-        return poBandFile->RasterIO(
-            GF_Read, nBlockXOff * nBlockXSize, nBlockYOff * nBlockYSize,
-            nRequestXSize, nRequestYSize, pImage, nRequestXSize, nRequestYSize,
-            GDT_Byte, 1, nullptr, 1, nBlockXSize, 0, nullptr);
+        return poBandFile->RasterIO(GF_Read, nXOff, nYOff, nRequestXSize,
+                                    nRequestYSize, pImage, nRequestXSize,
+                                    nRequestYSize, GDT_UInt8, 1, nullptr, 1,
+                                    nBlockXSize, 0, nullptr);
 
     CPLAssert(false);
     return CE_Failure;
@@ -518,14 +508,14 @@ CPLErr RS2CalibRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff,
         }
         CPLFree(pnImageTmp);
     } /* Ticket #2104: Support for ScanSAR products */
-    else if (m_eType == GDT_Byte)
+    else if (m_eType == GDT_UInt8)
     {
         GByte *pnImageTmp = reinterpret_cast<GByte *>(
             CPLMalloc(static_cast<size_t>(nBlockXSize) * nBlockYSize));
         eErr = m_poBandDataset->RasterIO(
             GF_Read, nBlockXOff * nBlockXSize, nBlockYOff * nBlockYSize,
             nBlockXSize, nRequestYSize, pnImageTmp, nBlockXSize, nRequestYSize,
-            GDT_Byte, 1, nullptr, 1, 1, 0, nullptr);
+            GDT_UInt8, 1, nullptr, 1, 1, 0, nullptr);
 
         /* iterate over detected values */
         for (int i = 0; i < nBlockYSize; i++)
@@ -828,7 +818,7 @@ GDALDataset *RS2Dataset::Open(GDALOpenInfo *poOpenInfo)
     else if (nBitsPerSample == 16 && STARTS_WITH_CI(pszDataType, "Mag"))
         eDataType = GDT_UInt16;
     else if (nBitsPerSample == 8 && STARTS_WITH_CI(pszDataType, "Mag"))
-        eDataType = GDT_Byte;
+        eDataType = GDT_UInt8;
     else
     {
         CPLError(
@@ -1630,7 +1620,7 @@ char **RS2Dataset::GetMetadataDomainList()
 /*                            GetMetadata()                             */
 /************************************************************************/
 
-char **RS2Dataset::GetMetadata(const char *pszDomain)
+CSLConstList RS2Dataset::GetMetadata(const char *pszDomain)
 
 {
     if (pszDomain != nullptr && STARTS_WITH_CI(pszDomain, "SUBDATASETS") &&

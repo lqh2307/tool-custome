@@ -8,7 +8,7 @@
 
 cmake_minimum_required(VERSION 3.10)
 
-project(osmium VERSION 1.18.0 LANGUAGES CXX C)
+project(osmium VERSION 1.19.0 LANGUAGES CXX C)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
@@ -103,7 +103,7 @@ if(CPPCHECK)
     # cpp doesn't find system includes for some reason, suppress that report
     set(CPPCHECK_OPTIONS ${CPPCHECK_OPTIONS} --suppress=missingIncludeSystem)
 
-    add_custom_target(cppcheck ${CPPCHECK} --std=c++17 ${CPPCHECK_OPTIONS} ${CMAKE_SOURCE_DIR}/src/*pp)
+    add_custom_target(cppcheck ${CPPCHECK} --std=c++${USE_CPP_VERSION} ${CPPCHECK_OPTIONS} ${CMAKE_SOURCE_DIR}/src/*pp)
 else()
     message(STATUS "Looking for cppcheck - not found")
     message(STATUS "  Build target 'cppcheck' will not be available")
@@ -174,6 +174,10 @@ if(CMAKE_BUILD_TYPE STREQUAL "Dev")
     if(NOT MSVC)
         add_definitions(-Werror)
     endif()
+endif()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_definitions(-Wno-stringop-overread)
 endif()
 
 # Force RelWithDebInfo build type if none was given

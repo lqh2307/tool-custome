@@ -644,34 +644,50 @@ int VSIMkdir(const char *pszPathname, long mode)
 
 int VSIMkdirRecursive(const char *pszPathname, long mode)
 {
-    if (pszPathname == nullptr || pszPathname[0] == '\0' ||
-        strncmp("/", pszPathname, 2) == 0)
-    {
+    if (!pszPathname)
         return -1;
-    }
 
-    const CPLString osPathname(pszPathname);
+    const std::string osPathnameOri(pszPathname);
+    if (osPathnameOri.empty() || osPathnameOri == "/")
+        return -1;
+
     VSIStatBufL sStat;
-    if (VSIStatL(osPathname, &sStat) == 0)
+    if (VSIStatL(osPathnameOri.c_str(), &sStat) == 0)
     {
         return VSI_ISDIR(sStat.st_mode) ? 0 : -1;
     }
-    const std::string osParentPath(CPLGetPathSafe(osPathname));
 
-    // Prevent crazy paths from recursing forever.
-    if (osParentPath == osPathname ||
-        osParentPath.length() >= osPathname.length())
+    std::string osCurrentPath(osPathnameOri);
+    std::vector<std::string> aosQueue;
+    while (true)
     {
-        return -1;
+        std::string osParentPath(CPLGetPathSafe(osCurrentPath.c_str()));
+
+        // Prevent crazy paths from recursing forever.
+        if (osParentPath.length() >= osCurrentPath.length())
+        {
+            break;
+        }
+
+        if (!osParentPath.empty() &&
+            VSIStatL(osParentPath.c_str(), &sStat) != 0)
+        {
+            osCurrentPath = std::move(osParentPath);
+            aosQueue.push_back(osCurrentPath);
+        }
+        else
+        {
+            break;
+        }
     }
 
-    if (!osParentPath.empty() && VSIStatL(osParentPath.c_str(), &sStat) != 0)
+    for (auto oIter = aosQueue.rbegin(); oIter != aosQueue.rend(); ++oIter)
     {
-        if (VSIMkdirRecursive(osParentPath.c_str(), mode) != 0)
+        if (VSIMkdir(oIter->c_str(), mode) != 0)
             return -1;
     }
 
-    return VSIMkdir(osPathname, mode);
+    return VSIMkdir(osPathnameOri.c_str(), mode);
 }
 
 /************************************************************************/
@@ -2958,7 +2974,7 @@ int VSIFCloseL(VSILFILE *fp)
  *
  * Analog of the POSIX fseek() call.
  *
- * Caution: vsi_l_offset is a unsigned type, so SEEK_CUR can only be used
+ * Caution: vsi_l_offset is an unsigned type, so SEEK_CUR can only be used
  * for positive seek. If negative seek is needed, use
  * VSIFSeekL( fp, VSIFTellL(fp) + negative_offset, SEEK_SET ).
  *
@@ -2966,7 +2982,7 @@ int VSIFCloseL(VSILFILE *fp)
  * @param nOffset offset in bytes.
  * @param nWhence one of SEEK_SET, SEEK_CUR or SEEK_END.
  *
- * @return 0 on success or -1 one failure.
+ * @return 0 on success or -1 on failure.
  */
 
 int VSIFSeekL(VSILFILE *fp, vsi_l_offset nOffset, int nWhence)
@@ -3090,28 +3106,6 @@ int VSIFFlushL(VSILFILE *fp)
 /************************************************************************/
 
 /**
- * \fn VSIVirtualHandle::Read( void *pBuffer, size_t nSize, size_t nCount )
- * \brief Read bytes from file.
- *
- * Reads nCount objects of nSize bytes from the indicated file at the
- * current offset into the indicated buffer.
- *
- * This method goes through the VSIFileHandler virtualization and may
- * work on unusual filesystems such as in memory.
- *
- * Analog of the POSIX fread() call.
- *
- * @param pBuffer the buffer into which the data should be read (at least
- * nCount * nSize bytes in size.
- * @param nSize size of objects to read in bytes.
- * @param nCount number of objects to read.
- *
- * @return number of objects successfully read. If that number is less than
- * nCount, VSIFEofL() or VSIFErrorL() can be used to determine the reason for
- * the short read.
- */
-
-/**
  * \brief Read bytes from file.
  *
  * Reads nCount objects of nSize bytes from the indicated file at the
@@ -3199,27 +3193,6 @@ int VSIFReadMultiRangeL(int nRanges, void **ppData,
 /************************************************************************/
 /*                             VSIFWriteL()                             */
 /************************************************************************/
-
-/**
- * \fn VSIVirtualHandle::Write( const void *pBuffer,
- *                              size_t nSize, size_t nCount )
- * \brief Write bytes to file.
- *
- * Writes nCount objects of nSize bytes to the indicated file at the
- * current offset into the indicated buffer.
- *
- * This method goes through the VSIFileHandler virtualization and may
- * work on unusual filesystems such as in memory.
- *
- * Analog of the POSIX fwrite() call.
- *
- * @param pBuffer the buffer from which the data should be written (at least
- * nCount * nSize bytes in size.
- * @param nSize size of objects to write in bytes.
- * @param nCount number of objects to write.
- *
- * @return number of objects successfully written.
- */
 
 /**
  * \brief Write bytes to file.
@@ -3441,6 +3414,123 @@ int VSIFPrintfL(VSILFILE *fp, CPL_FORMAT_STRING(const char *pszFormat), ...)
 
     return static_cast<int>(
         VSIFWriteL(osResult.c_str(), 1, osResult.length(), fp));
+}
+
+/************************************************************************/
+/*                       VSIVirtualHandle::Read()                       */
+/************************************************************************/
+
+/**
+ * \fn VSIVirtualHandle::Read( void *pBuffer, size_t nBytes )
+ * \brief Read bytes from file.
+ *
+ * Reads nBytes bytes from the indicated file at the current offset into the
+ * indicated buffer.
+ *
+ * This method goes through the VSIFileHandler virtualization and may
+ * work on unusual filesystems such as in memory.
+ *
+ * Similar to the POSIX read() call, except it returns a size_t unsigned value.
+ *
+ * @param pBuffer the buffer into which the data should be read (at least
+ * nCount * nSize bytes in size.
+ * @param nBytes number of bytes to read.
+ *
+ * @return number of bytes successfully read. If that number is less than
+ * nCount, Eof() or Error() can be used to determine the reason for
+ * the short read.
+ *
+ * @since 3.13
+ */
+
+/************************************************************************/
+/*                       VSIVirtualHandle::Read()                       */
+/************************************************************************/
+
+/**
+ * \brief Read bytes from file.
+ *
+ * Reads nCount objects of nSize bytes from the indicated file at the
+ * current offset into the indicated buffer.
+ *
+ * This method goes through the VSIFileHandler virtualization and may
+ * work on unusual filesystems such as in memory.
+ *
+ * Analog of the POSIX fread() call.
+ *
+ * @param pBuffer the buffer into which the data should be read (at least
+ * nCount * nSize bytes in size.
+ * @param nSize size of objects to read in bytes.
+ * @param nCount number of objects to read.
+ *
+ * @return number of objects successfully read. If that number is less than
+ * nCount, VSIFEofL() or VSIFErrorL() can be used to determine the reason for
+ * the short read.
+ */
+size_t VSIVirtualHandle::Read(void *pBuffer, size_t nSize, size_t nCount)
+{
+    const size_t nBytes = nSize * nCount;
+    if (nSize == 0)
+        return 0;
+    const size_t nBytesRead = Read(pBuffer, nBytes);
+    return nBytesRead / nSize;
+}
+
+/************************************************************************/
+/*                       VSIVirtualHandle::Write()                      */
+/************************************************************************/
+
+/**
+ * \fn VSIVirtualHandle::Write( const void *pBuffer, size_t nBytes )
+ * \brief Write bytes to file.
+ *
+ * Writes nBytes bytes to the indicated file at the current offset into the
+ * indicated buffer.
+ *
+ * This method goes through the VSIFileHandler virtualization and may
+ * work on unusual filesystems such as in memory.
+ *
+ * Analog of the POSIX write() call, except it returns a size_t unsigned value.
+ *
+ * @param pBuffer the buffer from which the data should be written (at least
+ * nCount * nSize bytes in size.
+ * @param nBytes number of bytes to write.
+ *
+ * @return number of bytes successfully written.
+ *
+ * @since 3.13
+ */
+
+/************************************************************************/
+/*                       VSIVirtualHandle::Write()                      */
+/************************************************************************/
+
+/**
+ * \brief Write bytes to file.
+ *
+ * Writes nCount objects of nSize bytes to the indicated file at the
+ * current offset into the indicated buffer.
+ *
+ * This method goes through the VSIFileHandler virtualization and may
+ * work on unusual filesystems such as in memory.
+ *
+ * Analog of the POSIX fwrite() call.
+ *
+ * @param pBuffer the buffer from which the data should be written (at least
+ * nCount * nSize bytes in size.
+ * @param nSize size of objects to write in bytes.
+ * @param nCount number of objects to write.
+ *
+ * @return number of objects successfully written.
+ */
+
+size_t VSIVirtualHandle::Write(const void *pBuffer, size_t nSize, size_t nCount)
+{
+    const size_t nBytes = nSize * nCount;
+    if (nSize == 0)
+        return 0;
+    const size_t nBytesWritten = Write(pBuffer, nBytes);
+    return nBytesWritten / nSize;
 }
 
 /************************************************************************/
@@ -4090,11 +4180,12 @@ bool VSIDuplicateFileSystemHandler(const char *pszSourceFSName,
         return false;
     }
 
-    poTargetFSHandler = poSourceFSHandler->Duplicate(pszNewFSName);
-    if (!poTargetFSHandler)
+    auto poClonedFSHandler = std::shared_ptr<VSIFilesystemHandler>(
+        poSourceFSHandler->Duplicate(pszNewFSName));
+    if (!poClonedFSHandler)
         return false;
 
-    VSIFileManager::InstallHandler(pszNewFSName, poTargetFSHandler);
+    VSIFileManager::InstallHandler(pszNewFSName, poClonedFSHandler);
     return true;
 }
 
@@ -4117,30 +4208,13 @@ bool VSIDuplicateFileSystemHandler(const char *pszSourceFSName,
 /*                           VSIFileManager()                           */
 /************************************************************************/
 
-VSIFileManager::VSIFileManager() : poDefaultHandler(nullptr)
-{
-}
+VSIFileManager::VSIFileManager() = default;
 
 /************************************************************************/
 /*                          ~VSIFileManager()                           */
 /************************************************************************/
 
-VSIFileManager::~VSIFileManager()
-{
-    std::set<VSIFilesystemHandler *> oSetAlreadyDeleted;
-    for (std::map<std::string, VSIFilesystemHandler *>::const_iterator iter =
-             oHandlers.begin();
-         iter != oHandlers.end(); ++iter)
-    {
-        if (oSetAlreadyDeleted.find(iter->second) == oSetAlreadyDeleted.end())
-        {
-            oSetAlreadyDeleted.insert(iter->second);
-            delete iter->second;
-        }
-    }
-
-    delete poDefaultHandler;
-}
+VSIFileManager::~VSIFileManager() = default;
 
 /************************************************************************/
 /*                                Get()                                 */
@@ -4204,7 +4278,7 @@ char **VSIFileManager::GetPrefixes()
 {
     CPLMutexHolder oHolder(&hVSIFileManagerMutex);
     CPLStringList aosList;
-    for (const auto &oIter : Get()->oHandlers)
+    for (const auto &oIter : Get()->m_apoHandlers)
     {
         if (oIter.first != "/vsicurl?")
         {
@@ -4224,29 +4298,27 @@ VSIFilesystemHandler *VSIFileManager::GetHandler(const char *pszPath)
     VSIFileManager *poThis = Get();
     const size_t nPathLen = strlen(pszPath);
 
-    for (std::map<std::string, VSIFilesystemHandler *>::const_iterator iter =
-             poThis->oHandlers.begin();
-         iter != poThis->oHandlers.end(); ++iter)
+    for (auto &[key, handler] : poThis->m_apoHandlers)
     {
-        const char *pszIterKey = iter->first.c_str();
-        const size_t nIterKeyLen = iter->first.size();
+        const char *pszIterKey = key.c_str();
+        const size_t nIterKeyLen = key.size();
         if (strncmp(pszPath, pszIterKey, nIterKeyLen) == 0)
-            return iter->second;
+            return handler.get();
 
         // "/vsimem\foo" should be handled as "/vsimem/foo".
         if (nIterKeyLen && nPathLen > nIterKeyLen &&
             pszIterKey[nIterKeyLen - 1] == '/' &&
             pszPath[nIterKeyLen - 1] == '\\' &&
             strncmp(pszPath, pszIterKey, nIterKeyLen - 1) == 0)
-            return iter->second;
+            return handler.get();
 
         // /vsimem should be treated as a match for /vsimem/.
         if (nPathLen + 1 == nIterKeyLen &&
             strncmp(pszPath, pszIterKey, nPathLen) == 0)
-            return iter->second;
+            return handler.get();
     }
 
-    return poThis->poDefaultHandler;
+    return poThis->m_poDefaultHandler.get();
 }
 
 /************************************************************************/
@@ -4257,10 +4329,22 @@ void VSIFileManager::InstallHandler(const std::string &osPrefix,
                                     VSIFilesystemHandler *poHandler)
 
 {
+    InstallHandler(osPrefix, std::shared_ptr<VSIFilesystemHandler>(poHandler));
+}
+
+/************************************************************************/
+/*                           InstallHandler()                           */
+/************************************************************************/
+
+void VSIFileManager::InstallHandler(
+    const std::string &osPrefix,
+    const std::shared_ptr<VSIFilesystemHandler> &poHandler)
+
+{
     if (osPrefix == "")
-        Get()->poDefaultHandler = poHandler;
+        Get()->m_poDefaultHandler = poHandler;
     else
-        Get()->oHandlers[osPrefix] = poHandler;
+        Get()->m_apoHandlers[osPrefix] = poHandler;
 }
 
 /************************************************************************/
@@ -4270,9 +4354,9 @@ void VSIFileManager::InstallHandler(const std::string &osPrefix,
 void VSIFileManager::RemoveHandler(const std::string &osPrefix)
 {
     if (osPrefix == "")
-        Get()->poDefaultHandler = nullptr;
+        Get()->m_poDefaultHandler.reset();
     else
-        Get()->oHandlers.erase(osPrefix);
+        Get()->m_apoHandlers.erase(osPrefix);
 }
 
 /************************************************************************/

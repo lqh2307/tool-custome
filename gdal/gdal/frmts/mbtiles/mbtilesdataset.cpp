@@ -108,7 +108,7 @@ class MBTilesDataset final : public GDALPamDataset,
     CPLErr SetSpatialRef(const OGRSpatialReference *poSRS) override;
 
     char **GetMetadataDomainList() override;
-    char **GetMetadata(const char *pszDomain = "") override;
+    CSLConstList GetMetadata(const char *pszDomain = "") override;
     virtual const char *GetMetadataItem(const char *pszName,
                                         const char *pszDomain = "") override;
 
@@ -1336,7 +1336,7 @@ char **MBTilesDataset::GetMetadataDomainList()
 /*                            GetMetadata()                             */
 /************************************************************************/
 
-char **MBTilesDataset::GetMetadata(const char *pszDomain)
+CSLConstList MBTilesDataset::GetMetadata(const char *pszDomain)
 {
     if (hDS == nullptr || (pszDomain != nullptr && !EQUAL(pszDomain, "")))
         return GDALPamDataset::GetMetadata(pszDomain);
@@ -1345,7 +1345,7 @@ char **MBTilesDataset::GetMetadata(const char *pszDomain)
         return aosList.List();
 
     bFetchedMetadata = true;
-    aosList = CPLStringList(GDALPamDataset::GetMetadata(), FALSE);
+    aosList = CPLStringList(GDALPamDataset::GetMetadata());
 
     OGRLayerH hSQLLyr = GDALDatasetExecuteSQL(
         hDS, "SELECT name, value FROM metadata WHERE name != 'json' LIMIT 1000",
@@ -1973,11 +1973,10 @@ void MBTilesDataset::InitVector(double dfMinX, double dfMinY, double dfMaxX,
             CPLJSONArray oAttributesFromTileStats =
                 OGRMVTFindAttributesFromTileStat(oTileStatLayers,
                                                  oId.ToString().c_str());
-            m_apoLayers.push_back(
-                std::unique_ptr<OGRLayer>(new MBTilesVectorLayer(
-                    this, oId.ToString().c_str(), oFields,
-                    oAttributesFromTileStats, bJsonField, dfMinX, dfMinY,
-                    dfMaxX, dfMaxY, eGeomType, bZoomLevelFromSpatialFilter)));
+            m_apoLayers.push_back(std::make_unique<MBTilesVectorLayer>(
+                this, oId.ToString().c_str(), oFields, oAttributesFromTileStats,
+                bJsonField, dfMinX, dfMinY, dfMaxX, dfMaxY, eGeomType,
+                bZoomLevelFromSpatialFilter));
         }
     }
 }
@@ -2543,7 +2542,7 @@ static int MBTilesGetBandCountAndTileSize(bool bIsVSICURL, GDALDatasetH &hDS,
 
     if ((nBands != 1 && nBands != 2 && nBands != 3 && nBands != 4) ||
         GDALGetRasterXSize(hDSTile) != GDALGetRasterYSize(hDSTile) ||
-        GDALGetRasterDataType(GDALGetRasterBand(hDSTile, 1)) != GDT_Byte)
+        GDALGetRasterDataType(GDALGetRasterBand(hDSTile, 1)) != GDT_UInt8)
     {
         CPLError(CE_Failure, CPLE_NotSupported,
                  "Unsupported tile characteristics");
@@ -2965,7 +2964,7 @@ bool MBTilesDataset::CreateInternal(const char *pszFilename, int nXSize,
                                     int nYSize, int nBandsIn, GDALDataType eDT,
                                     char **papszOptions)
 {
-    if (eDT != GDT_Byte)
+    if (eDT != GDT_UInt8)
     {
         CPLError(CE_Failure, CPLE_NotSupported, "Only Byte supported");
         return false;
@@ -3063,21 +3062,12 @@ bool MBTilesDataset::CreateInternal(const char *pszFilename, int nXSize,
     sqlite3_exec(hDB, pszSQL, nullptr, nullptr, nullptr);
     sqlite3_free(pszSQL);
 
-
-    const std::string osAttribution = CSLFetchNameValueDef(
-        papszOptions, "ATTRIBUTION", CPLGetBasenameSafe(pszFilename).c_str());
-    pszSQL = sqlite3_mprintf(
-        "INSERT INTO metadata (name, value) VALUES ('attribution', '%q')",
-        osAttribution.c_str());
-    sqlite3_exec(hDB, pszSQL, nullptr, nullptr, nullptr);
-    sqlite3_free(pszSQL);
-
     const char *pszTF = CSLFetchNameValue(papszOptions, "TILE_FORMAT");
     if (pszTF)
         m_eTF = GDALGPKGMBTilesGetTileFormat(pszTF);
 
     const char *pszVersion = CSLFetchNameValueDef(
-        papszOptions, "VERSION", "1.0.0");
+        papszOptions, "VERSION", (m_eTF == GPKG_TF_WEBP) ? "1.3" : "1.1");
     pszSQL = sqlite3_mprintf(
         "INSERT INTO metadata (name, value) VALUES ('version', '%q')",
         pszVersion);
@@ -3358,7 +3348,7 @@ GDALDataset *MBTilesDataset::CreateCopy(const char *pszFilename,
     }
 
     GDALDataset *poDS = Create(pszFilename, nXSize, nYSize, nTargetBands,
-                               GDT_Byte, papszOptions);
+                               GDT_UInt8, papszOptions);
     if (poDS == nullptr)
     {
         CSLDestroy(papszTO);
@@ -3395,7 +3385,7 @@ GDALDataset *MBTilesDataset::CreateCopy(const char *pszFilename,
     GDALWarpOptions *psWO = GDALCreateWarpOptions();
 
     psWO->papszWarpOptions = CSLSetNameValue(nullptr, "OPTIMIZE_SIZE", "YES");
-    psWO->eWorkingDataType = GDT_Byte;
+    psWO->eWorkingDataType = GDT_UInt8;
 
     psWO->eResampleAlg = eResampleAlg;
 
@@ -3758,8 +3748,6 @@ void GDALRegister_MBTiles()
         "description='Tileset name'/>"
         "  <Option name='DESCRIPTION' scope='raster,vector' type='string' "
         "description='A description of the layer'/>"
-        "  <Option name='ATTRIBUTION' scope='raster,vector' type='string' "
-        "description='An attribution of the layer'/>"
         "  <Option name='TYPE' scope='raster,vector' type='string-select' "
         "description='Layer type' default='overlay'>"
         "    <Value>overlay</Value>"
@@ -3767,7 +3755,7 @@ void GDALRegister_MBTiles()
         "  </Option>"
         "  <Option name='VERSION' scope='raster' type='string' "
         "description='The version of the tileset, as a plain number' "
-        "default='1.0.0'/>"
+        "default='1.1'/>"
         "  <Option name='BLOCKSIZE' scope='raster' type='int' "
         "description='Block size in pixels' default='256' min='64' "
         "max='8192'/>" COMPRESSION_OPTIONS

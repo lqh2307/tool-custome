@@ -42,7 +42,7 @@ class GDALVirtualMem
     // int nYSize;
     coord_type nBufXSize = 0;
     coord_type nBufYSize = 0;
-    GDALDataType eBufType = GDT_Byte;
+    GDALDataType eBufType = GDT_UInt8;
     int nBandCount = 0;
     int *panBandMap = nullptr;
     int nPixelSpace = 0;
@@ -659,8 +659,8 @@ GDALGetVirtualMem(GDALDatasetH hDS, GDALRasterBandH hBand, GDALRWFlag eRWFlag,
         hDS ? GDALGetRasterYSize(hDS) : GDALGetRasterBandYSize(hBand);
 
     if (nXOff < 0 || nYOff < 0 || nXSize == 0 || nYSize == 0 || nBufXSize < 0 ||
-        nBufYSize < 0 || nXOff + nXSize > nRasterXSize ||
-        nYOff + nYSize > nRasterYSize)
+        nBufYSize < 0 || nXSize > nRasterXSize - nXOff ||
+        nYSize > nRasterYSize - nYOff)
     {
         CPLError(CE_Failure, CPLE_AppDefined, "Invalid window request");
         return nullptr;
@@ -1021,7 +1021,7 @@ class GDALTiledVirtualMem
     int nYSize = 0;
     int nTileXSize = 0;
     int nTileYSize = 0;
-    GDALDataType eBufType = GDT_Byte;
+    GDALDataType eBufType = GDT_UInt8;
     int nBandCount = 0;
     int *panBandMap = nullptr;
     GDALTileOrganization eTileOrganization = GTO_TIP;

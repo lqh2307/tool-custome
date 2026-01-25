@@ -13,6 +13,28 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 
+## [1.19.0] - 2026-01-18
+
+### Added
+
+- Add integration tests for show command output formats. Thanks to Alexander
+  Farber <farber72@outlook.de>.
+
+### Changed
+
+- Switch to C++17 as minimum requirement.
+- Use `std::back_inserter` instead of `boost::function_output_iterator`
+  removing one dependency on Boost.
+- Various small fixes and code cleanups.
+
+### Fixed
+
+- Fix ID comparison in `osmium merge` to match `osmium sort` behavior. Thanks
+  to Zi-Hao WANG <zhwang0721@gmail.com>.
+- Extract in "simple" mode: Check all nodes in a way for overlap with the
+  extraction region. Thanks to Muhammed Can Küçükaslan <muhammed.kucukaslan@getir.com>.
+
+
 ## [1.18.0] - 2025-03-17
 
 ### Changed
@@ -753,7 +775,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - Minor updates to documentation and build system
 
 
-[unreleased]: https://github.com/osmcode/osmium-tool/compare/v1.18.0...HEAD
+[unreleased]: https://github.com/osmcode/osmium-tool/compare/v1.19.0...HEAD
+[1.19.0]: https://github.com/osmcode/osmium-tool/compare/v1.18.0...v1.19.0
 [1.18.0]: https://github.com/osmcode/osmium-tool/compare/v1.17.0...v1.18.0
 [1.17.0]: https://github.com/osmcode/osmium-tool/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/osmcode/osmium-tool/compare/v1.15.0...v1.16.0

@@ -2093,7 +2093,7 @@ CPLErr VRTAveragedSource::RasterIO(GDALDataType /*eVRTBandDataType*/, int nXOff,
                 static_cast<GByte *>(pData) + nPixelSpace * iBufPixel +
                 static_cast<GPtrDiff_t>(nLineSpace) * iBufLine;
 
-            if (eBufType == GDT_Byte)
+            if (eBufType == GDT_UInt8)
                 *pDstLocation = static_cast<GByte>(
                     std::min(255.0, std::max(0.0, dfOutputValue + 0.5)));
             else
@@ -2378,7 +2378,7 @@ CPLErr VRTNoDataFromMaskSource::RasterIO(
     double dfRemappedValue = m_dfRemappedValue;
     if (!m_bHasRemappedValue)
     {
-        if (eSrcBandDT == GDT_Byte &&
+        if (eSrcBandDT == GDT_UInt8 &&
             m_dfNoDataValue >= std::numeric_limits<GByte>::min() &&
             m_dfNoDataValue <= std::numeric_limits<GByte>::max() &&
             static_cast<int>(m_dfNoDataValue) == m_dfNoDataValue)
@@ -2418,8 +2418,8 @@ CPLErr VRTNoDataFromMaskSource::RasterIO(
         }
     }
     const bool bByteOptim =
-        (eSrcBandDT == GDT_Byte && eBufType == GDT_Byte &&
-         eSrcMaskBandDT == GDT_Byte && m_dfMaskValueThreshold >= 0 &&
+        (eSrcBandDT == GDT_UInt8 && eBufType == GDT_UInt8 &&
+         eSrcMaskBandDT == GDT_UInt8 && m_dfMaskValueThreshold >= 0 &&
          m_dfMaskValueThreshold <= 255 &&
          static_cast<int>(m_dfMaskValueThreshold) == m_dfMaskValueThreshold &&
          m_dfNoDataValue >= 0 && m_dfNoDataValue <= 255 &&
@@ -2542,7 +2542,7 @@ CPLErr VRTNoDataFromMaskSource::RasterIO(
             GSpacing nDstOffset = iY * nLineSpace;
             for (int iX = 0; iX < nOutXSize; iX++)
             {
-                if (eSrcMaskBandDT == GDT_Byte)
+                if (eSrcMaskBandDT == GDT_UInt8)
                 {
                     dfMaskVal = oWorkingState.m_abyWrkBufferMask[nSrcIdx];
                 }
@@ -3126,7 +3126,7 @@ CPLErr VRTComplexSource::RasterIO(GDALDataType eVRTBandDataType, int nXOff,
     if (m_nProcessingFlags == PROCESSING_FLAG_NODATA)
     {
         // Optimization if doing only nodata processing
-        if (eSourceType == GDT_Byte)
+        if (eSourceType == GDT_UInt8)
         {
             if (!GDALIsValueInRange<GByte>(m_dfNoDataValue))
             {
@@ -3136,7 +3136,7 @@ CPLErr VRTComplexSource::RasterIO(GDALDataType eVRTBandDataType, int nXOff,
                     psExtraArgIn, oWorkingState);
             }
 
-            return RasterIOProcessNoData<GByte, GDT_Byte>(
+            return RasterIOProcessNoData<GByte, GDT_UInt8>(
                 poSourceBand, eVRTBandDataType, nReqXOff, nReqYOff, nReqXSize,
                 nReqYSize, pabyOut, nOutXSize, nOutYSize, eBufType, nPixelSpace,
                 nLineSpace, psExtraArg, oWorkingState);
@@ -3225,7 +3225,7 @@ static void CopyWord(const SrcType *pSrcVal, GDALDataType eSrcType,
 {
     switch (eDstType)
     {
-        case GDT_Byte:
+        case GDT_UInt8:
             GDALCopyWord(*pSrcVal, *static_cast<uint8_t *>(pDstVal));
             break;
         case GDT_Int8:
@@ -3573,7 +3573,7 @@ CPLErr VRTComplexSource::RasterIOInternal(
             if (poMaskBand->RasterIO(
                     GF_Read, nReqXOff, nReqYOff, nReqXSize, nReqYSize,
                     oWorkingState.m_abyWrkBufferMask.data(), nOutXSize,
-                    nOutYSize, GDT_Byte, 1, static_cast<GSpacing>(nOutXSize),
+                    nOutYSize, GDT_UInt8, 1, static_cast<GSpacing>(nOutXSize),
                     psExtraArg) != CE_None)
             {
                 return CE_Failure;
@@ -3732,7 +3732,7 @@ CPLErr VRTComplexSource::RasterIOInternal(
                     afResult[0] = static_cast<WorkingDT>(m_nMaxValue);
             }
 
-            if (eBufType == GDT_Byte && eVRTBandDataType == GDT_Byte)
+            if (eBufType == GDT_UInt8 && eVRTBandDataType == GDT_UInt8)
             {
                 *pDstLocation = static_cast<GByte>(std::min(
                     255.0f,
@@ -3850,7 +3850,7 @@ CPLErr VRTComplexSource::GetHistogram(int nXSize, int nYSize, double dfMin,
 /************************************************************************/
 
 VRTFuncSource::VRTFuncSource()
-    : pfnReadFunc(nullptr), pCBData(nullptr), eType(GDT_Byte),
+    : pfnReadFunc(nullptr), pCBData(nullptr), eType(GDT_UInt8),
       fNoDataValue(static_cast<float>(VRT_NODATA_UNSET))
 {
 }
