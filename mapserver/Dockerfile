@@ -11,6 +11,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
 		build-essential \
 		cmake \
+		libprotobuf-c-dev \
 		libpng-dev \
 		libjpeg-dev \
 		libgif-dev \
@@ -52,6 +53,7 @@ ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
+		libprotobuf-c1 \
 		libpng16-16t64 \
 		libjpeg-turbo8 \
 		libgif7 \
@@ -75,7 +77,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 COPY --from=mapserver-builder ${PREFIX_DIR} ${PREFIX_DIR}
 
 ENV PATH=${PREFIX_DIR}/mapserver/bin:${PATH}
-ENV MAPSERVER_CONFIG_FILE=${PREFIX_DIR}/mapserver/etc/mapserver.conf
 
 VOLUME /data
 
