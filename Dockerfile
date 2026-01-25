@@ -4,6 +4,7 @@ ARG TARGET_IMAGE=ubuntu:24.04
 # Build tilemaker
 FROM ${BUILDER_IMAGE} AS tilemaker-builder
 
+ARG BUILD_NUM_PROCESS
 ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
@@ -32,7 +33,7 @@ RUN cd ./tilemaker \
 	&& cmake .. \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/tilemaker \
-	&& cmake --build . --parallel $(nproc) \
+	&& cmake --build . --parallel ${BUILD_NUM_PROCESS:-$(nproc)} \
 	&& cmake --build . --target install \
 	&& cd ../.. \
 	&& rm -rf ./tilemaker
@@ -41,6 +42,7 @@ RUN cd ./tilemaker \
 # Build tippecanoe
 FROM ${BUILDER_IMAGE} AS tippecanoe-builder
 
+ARG BUILD_NUM_PROCESS
 ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
@@ -57,7 +59,7 @@ COPY ./tippecanoe .
 
 RUN cd ./tippecanoe \
 	&& PREFIX=${PREFIX_DIR}/tippecanoe \
-		make -j$(nproc) \
+		make -j${BUILD_NUM_PROCESS:-$(nproc)} \
 	&& PREFIX=${PREFIX_DIR}/tippecanoe \
 		make install \
 	&& cd .. \
@@ -67,6 +69,7 @@ RUN cd ./tippecanoe \
 # Build gdal
 FROM ${BUILDER_IMAGE} AS gdal-builder
 
+ARG BUILD_NUM_PROCESS
 ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
@@ -113,7 +116,7 @@ RUN cd ./gdal \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_RPATH='$ORIGIN/../lib' \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/gdal \
-	&& cmake --build . --parallel $(nproc) \
+	&& cmake --build . --parallel ${BUILD_NUM_PROCESS:-$(nproc)} \
 	&& cmake --build . --target install \
 	&& cd ../.. \
 	&& rm -rf ./gdal
@@ -122,6 +125,7 @@ RUN cd ./gdal \
 # Build osmium-tool
 FROM ${BUILDER_IMAGE} AS osmium-tool-builder
 
+ARG BUILD_NUM_PROCESS
 ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
@@ -149,7 +153,7 @@ RUN cd ./osmium-tool \
 	&& cmake .. \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
-	&& cmake --build . --parallel $(nproc) \
+	&& cmake --build . --parallel ${BUILD_NUM_PROCESS:-$(nproc)} \
 	&& cmake --build . --target install \
 	&& cd ../.. \
 	&& rm -rf ./osmium-tool
