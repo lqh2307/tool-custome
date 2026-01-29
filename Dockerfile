@@ -96,16 +96,24 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libtiff-dev \
 		libexpat-dev \
 		libxerces-c-dev \
-		libdeflate-dev \
 		libzstd-dev \
 		libpq-dev \
 		libopenjp2-7-dev \
-    libmuparser-dev \ 
+		libmuparser-dev \ 
 		libhdf4-alt-dev \
 		libhdf5-serial-dev \
 		libxml2-dev \
 		libcairo2-dev \
 		libpcre3-dev \
+		libkml-dev \
+		libheif-dev \
+		libavif-dev \
+		libdeflate-dev \
+		liblz4-dev \
+		libbz2-dev \
+		libblosc-dev \
+		libbrotli-dev \
+		libarchive-dev \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -201,7 +209,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		liblz4-1 \
 		libexpat1 \
 		libxerces-c3.2 \
-		libdeflate0 \
 		libzstd1 \
 		libpq5 \
 		libopenjp2-7 \
@@ -212,6 +219,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libxml2 \
 		libcairo2 \
 		libpcre3 \
+		libkmlbase1t64 \
+		libheif1 \
+		libavif16 \
+		libdeflate0 \
+		libblosc2-2t64 \
+		libbrotli1 \
+		libarchive13t64 \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
