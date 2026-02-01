@@ -39,33 +39,6 @@ RUN cd ./tilemaker \
 	&& rm -rf ./tilemaker
 
 
-# Build tippecanoe
-FROM ${BUILDER_IMAGE} AS tippecanoe-builder
-
-ARG BUILD_NUM_PROCESS
-ARG PREFIX_DIR=/usr/local/opt
-
-RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
-	&& apt-get upgrade -y \
-	&& apt-get install -y \
-		build-essential \
-		libsqlite3-dev \
-		zlib1g-dev \
-	&& apt-get -y --purge autoremove \
-	&& apt-get clean \
-	&& rm -rf /var/lib/apt/lists/*
-
-COPY ./tippecanoe .
-
-RUN cd ./tippecanoe \
-	&& PREFIX=${PREFIX_DIR}/tippecanoe \
-		make -j${BUILD_NUM_PROCESS:-$(nproc)} \
-	&& PREFIX=${PREFIX_DIR}/tippecanoe \
-		make install \
-	&& cd .. \
-	&& rm -rf ./tippecanoe
-
-
 # Build gdal
 FROM ${BUILDER_IMAGE} AS gdal-builder
 
@@ -115,6 +88,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libbrotli-dev \
 		libarchive-dev \
 		liblzma-dev \
+		openjdk-21-jdk \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -132,43 +106,6 @@ RUN cd ./gdal \
 	&& cmake --build . --target install \
 	&& cd ../.. \
 	&& rm -rf ./gdal
-
-
-# Build osmium-tool
-FROM ${BUILDER_IMAGE} AS osmium-tool-builder
-
-ARG BUILD_NUM_PROCESS
-ARG PREFIX_DIR=/usr/local/opt
-
-RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
-	&& apt-get upgrade -y \
-	&& apt-get install -y \
-		build-essential \
-		cmake \
-		libosmium2-dev \
-		libprotozero-dev \
-		nlohmann-json3-dev \
-		libboost-program-options-dev \
-		libbz2-dev \
-		zlib1g-dev \
-		liblz4-dev \
-		libexpat1-dev \
-	&& apt-get -y --purge autoremove \
-	&& apt-get clean \
-	&& rm -rf /var/lib/apt/lists/*
-
-COPY ./osmium-tool .
-
-RUN cd ./osmium-tool \
-	&& mkdir -p ./build \
-	&& cd ./build \
-	&& cmake .. \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
-	&& cmake --build . --parallel ${BUILD_NUM_PROCESS:-$(nproc)} \
-	&& cmake --build . --target install \
-	&& cd ../.. \
-	&& rm -rf ./osmium-tool
 
 
 # Build target
@@ -203,9 +140,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libgif7 \
 		libwebp7 \
 		libtiff6 \
-		libosmium2-dev \
-		libprotozero-dev \
-		nlohmann-json3-dev \
 		libbz2-1.0 \
 		liblz4-1 \
 		libexpat1 \
@@ -228,17 +162,16 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libbrotli1 \
 		libarchive13t64 \
 		liblzma5 \
+		openjdk-21-jre \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
-COPY --from=tippecanoe-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
-COPY --from=osmium-tool-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/tippecanoe/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/osmium-tool/bin:${PREFIX_DIR}/scripts:${PATH}
+ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/scripts:${PATH}
 ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib
 ENV PYTHONPATH=${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages
 

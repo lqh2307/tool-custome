@@ -537,7 +537,7 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 		for idx, path in enumerate(inputs):
 			last_rowid = 0
 
-			LOGGER.info(f"Merging '{path}' - {idx + 1}...")
+			LOGGER.info(f"Merging with MBTiles '{path}' - {idx + 1}...")
 
 			src_conn = sqlite3.connect(path, False)
 			src_cur = src_conn.cursor()
@@ -624,7 +624,7 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 
 
 # ========= UPDATE MBTILES METADATA =========
-def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
+def update_metadata(conn, cur, metadata_json, merge_bounds):
 	final_metadata = {}
 
 	origin_metadatas = get_mbtiles_metadatas(cur)
@@ -636,12 +636,6 @@ def update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom):
 			final_metadata["bounds"] = encode_array(get_cover_bbox(parse_bounds(final_metadata["bounds"]), merge_bounds))
 		else:
 			final_metadata["bounds"] = encode_array(merge_bounds)
-
-	if ovr_minzoom is not None:
-		if "minzoom" in final_metadata:
-			final_metadata["minzoom"] = str(min(int(final_metadata["minzoom"]), ovr_minzoom))
-		else:
-			final_metadata["minzoom"] = str(ovr_minzoom)
 
 	if metadata_json:
 		final_metadata.update(metadata_json)
@@ -710,6 +704,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 	scheme = "tms"
 	is_flip = None
 	maxzoom = None
+	minzoom = 0
 
 	if metadata_json:
 		if "format" in metadata_json:
@@ -720,6 +715,9 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 
 		if "scheme" in metadata_json:
 			scheme = metadata_json["scheme"]
+
+		if "minzoom" in metadata_json:
+			minzoom = int(metadata_json["minzoom"])
 
 	if tile_format == "pbf":
 		raise ValueError(f"Overview is not support with format '{tile_format}'")
@@ -767,18 +765,16 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 	conn.execute("BEGIN;")
 
 	try:
-		while maxzoom > 0:
-			created_tiles = 0
-
-			c_zoom = maxzoom
+		while maxzoom >= minzoom:
+			c_z = maxzoom
 			p_z = maxzoom - 1
 
 			last_p = (-1, -1)
 
-			LOGGER.info(f"Creating level - z: {p_z}...")
+			LOGGER.info(f"Creating overview - {p_z}...")
 
 			while True:
-				cur.execute(select_p_query, (c_zoom, last_p[0], last_p[0], last_p[1], batch_size))
+				cur.execute(select_p_query, (c_z, last_p[0], last_p[0], last_p[1], batch_size))
 				parents = cur.fetchall()
 				if not parents:
 					break
@@ -791,7 +787,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 					min_c_y = p_y * 2
 					max_c_y = min_c_y + 1
 
-					cur.execute(select_c_range_query, (c_zoom, min_c_x, max_c_x, min_c_y, max_c_y))
+					cur.execute(select_c_range_query, (c_z, min_c_x, max_c_x, min_c_y, max_c_y))
 					childrens = cur.fetchall()
 					if not childrens:
 						continue
@@ -801,28 +797,19 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 				if pool:
 					for data in pool.imap_unordered(build_parent_tile, tasks):
 						cur.execute(insert_query, data)
-
-						created_tiles += 1
 				else:
 					for task in tasks:
 						cur.execute(insert_query, build_parent_tile(task))
 
-						created_tiles += 1
-
 				last_p = parents[-1]
 
 			maxzoom = p_z
-
-			if created_tiles <= 1:
-				break
 	finally:
 		if pool:
 			pool.close()
 			pool.join()
 
 	conn.execute("COMMIT;")
-
-	return maxzoom
 
 
 # ========= UPDATE MBTILES EXTRA INFO (HASH AND CREATED) =========
@@ -947,7 +934,7 @@ if __name__ == "__main__":
 	t0 = time.time()
 
 	if args.output.exists():
-		LOGGER.info(f"Existing output. Moving MBTiles '{args.output}'...")
+		LOGGER.info(f"Existing MBTiles output. Moving MBTiles to '{args.output}'...")
 
 		t1 = time.time()
 
@@ -993,7 +980,7 @@ if __name__ == "__main__":
 
 	LOGGER.info(f"Updating MBTiles metadata '{args.output}'...")
 
-	update_metadata(conn, cur, metadata_json, merge_bounds, ovr_minzoom)
+	update_metadata(conn, cur, metadata_json, merge_bounds)
 
 	conn.close()
 
