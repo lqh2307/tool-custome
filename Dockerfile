@@ -114,6 +114,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libblosc-dev \
 		libbrotli-dev \
 		libarchive-dev \
+		liblzma-dev \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -226,6 +227,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libblosc2-2t64 \
 		libbrotli1 \
 		libarchive13t64 \
+		liblzma5 \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
