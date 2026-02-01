@@ -247,12 +247,12 @@ def build_parent_tile(args):
 
 	canvas = Image.new(*build_args["background_args"])
 
-	for cx, cy, cdata in childrens:
+	for c_x, c_y, c_data_tile in childrens:
 		canvas.alpha_composite(
-			Image.open(io.BytesIO(cdata)).convert("RGBA"),
+			Image.open(io.BytesIO(c_data_tile)).convert("RGBA"),
 			(
-				(cx - min_c_x) * build_args["tile_size"],
-				(cy - min_c_y if build_args["is_flip"] else max_c_y - cy) * build_args["tile_size"],
+				(c_x - min_c_x) * build_args["tile_size"],
+				(c_y - min_c_y if build_args["is_flip"] else max_c_y - c_y) * build_args["tile_size"],
 			)
 		)
 
@@ -329,8 +329,6 @@ def get_mbtiles_format_from_tiles(cur):
 		return "png"
 	elif row[0].startswith(b"\xff\xd8"):
 		return "jpeg"
-	elif row[0].startswith((b"GIF87a", b"GIF89a")):
-		return "gif"
 	elif row[0].startswith(b"RIFF") and row[0][8:12] == b"WEBP":
 		return "webp"
 	else:
@@ -375,6 +373,7 @@ def move_and_connect(file_path, compression, workers, batch_size):
 	src_conn.close()
 
 	if tile_format:
+		# Prepare query
 		insert_query = "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
 		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
 		select_and_insert_query = "INSERT OR REPLACE INTO metadata (name, value) SELECT name, value FROM src.metadata;"
@@ -411,10 +410,7 @@ def move_and_connect(file_path, compression, workers, batch_size):
 		conn.execute("BEGIN;")
 
 		# Create workers
-		if workers > 1:
-			pool = Pool(workers)
-		else:
-			pool = None
+		pool = Pool(workers) if workers > 1 else None
 
 		try:
 			if tile_format == "pbf":
@@ -535,10 +531,7 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 		})
 
 	# Create workers
-	if workers > 1:
-		pool = Pool(workers)
-	else:
-		pool = None
+	pool = Pool(workers) if workers > 1 else None
 
 	try:
 		for idx, path in enumerate(inputs):
@@ -769,10 +762,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 		})
 
 	# Create workers
-	if workers > 1:
-		pool = Pool(workers)
-	else:
-		pool = None
+	pool = Pool(workers) if workers > 1 else None
 
 	conn.execute("BEGIN;")
 
@@ -862,10 +852,7 @@ def update_hash_and_created(conn, cur, batch_size):
 	last_rowid = 0
 
 	# Create workers
-	if workers > 1:
-		pool = Pool(workers)
-	else:
-		pool = None
+	pool = Pool(workers) if workers > 1 else None
 
 	conn.execute("BEGIN;")
 
