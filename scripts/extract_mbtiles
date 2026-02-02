@@ -765,7 +765,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 	conn.execute("BEGIN;")
 
 	try:
-		while maxzoom >= minzoom:
+		while maxzoom > minzoom:
 			c_z = maxzoom
 			p_z = maxzoom - 1
 
