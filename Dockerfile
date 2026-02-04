@@ -163,6 +163,11 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libarchive13t64 \
 		liblzma5 \
 		openjdk-21-jre \
+		zip \
+		unzip \
+		tar \
+		gzip \
+		xz-utils \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
