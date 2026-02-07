@@ -168,6 +168,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		tar \
 		gzip \
 		xz-utils \
+		bzip2 \
+		zstd \
+		p7zip-full \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
