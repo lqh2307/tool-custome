@@ -745,6 +745,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 			"optimize": True,
 			"lossless": True,
 			"quality": 100,
+			"subsampling": 0,
 		},
 		"is_flip": is_flip,
 		"resampling": resampling,
@@ -756,7 +757,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 		build_args["save_args"].update({
 			"compress_level": 9,
 			"method": 6,
-			"subsampling": 2,
+			"progressive": True,
 		})
 
 	# Create workers
