@@ -284,19 +284,21 @@ def get_mbtiles_metadatas(cur):
 
 
 def get_mbtiles_bounds_from_tiles(cur, scheme="tms"):
-	cur.execute("SELECT zoom_level, MIN (tile_column), MAX (tile_column), MIN (tile_row), MAX (tile_row) FROM tiles GROUP BY zoom_level;")
-	rows = cur.fetchall()
-	if not rows:
+	cur.execute("SELECT MAX(zoom_level) FROM tiles;")
+	row = cur.fetchone()
+	if not row:
 		return None
 
-	z, x_min, x_max, y_min, y_max = rows[0]
-	bounds = get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme)
+	maxzoom = row[0]
 
-	if len(rows) > 1:
-		for row in rows[1:]:
-			z, x_min, x_max, y_min, y_max = row
+	cur.execute("SELECT MIN(tile_column), MAX(tile_column), MIN(tile_row), MAX(tile_row) FROM tiles WHERE zoom_level = ?;", (maxzoom,))
+	row = cur.fetchone()
+	if not row:
+		return None
 
-			bounds = get_cover_bbox(bounds, get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme))
+	x_min, x_max, y_min, y_max = cur.fetchone()
+
+	bounds = get_bbox_from_tiles(x_min, y_min, x_max, y_max, maxzoom, scheme)
 
 	bounds[0] = limit_value(bounds[0], -MAX_LON, MAX_LON)
 	bounds[2] = limit_value(bounds[2], -MAX_LON, MAX_LON)
