@@ -387,12 +387,13 @@ def move_and_connect(file_path, compression, workers, batch_size):
 			"optimize": True,
 			"lossless": True,
 			"quality": 100,
+			"subsampling": 0,
 		}
 		if compression:
 			save_args.update({
 				"compress_level": 9,
 				"method": 6,
-				"subsampling": 2,
+				"mozjpeg": True,
 			})
 
 		tmp_file_path = file_path.with_name(f"{file_path.stem}_{uuid.uuid4().hex}{file_path.suffix}")
@@ -524,12 +525,13 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 		"optimize": True,
 		"lossless": True,
 		"quality": 100,
+		"subsampling": 0,
 	}
 	if compression:
 		save_args.update({
 			"compress_level": 9,
 			"method": 6,
-			"subsampling": 2,
+			"mozjpeg": True,
 		})
 
 	# Create workers
@@ -759,7 +761,7 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 		build_args["save_args"].update({
 			"compress_level": 9,
 			"method": 6,
-			"progressive": True,
+			"mozjpeg": True,
 		})
 
 	# Create workers
