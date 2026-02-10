@@ -61,6 +61,7 @@ def setup_command():
 	parser.add_argument("-c", "--compression", required=False, action="store_true", help="Enable compression tile for output MBTiles")
 	parser.add_argument("-ovr", "--overview", required=False, action="store_true", help="Create overview for output MBTiles")
 	parser.add_argument("-r", "--resampling", required=False, choices=["nearest", "bilinear", "cubic", "lanczos"], default="lanczos", help="Resampling method to create overview")
+	parser.add_argument("-a", "--append", required=False, action="store_true", help="Append to output existed MBTiles")
 
 	input_group = parser.add_mutually_exclusive_group(required=False)
 	input_group.add_argument("-i", "--inputs", nargs="+", type=Path, help="Input MBTiles file paths")
@@ -939,13 +940,18 @@ if __name__ == "__main__":
 	t0 = time.time()
 
 	if args.output.exists():
-		LOGGER.info(f"Existing MBTiles output. Moving MBTiles to '{args.output}'...")
+		if args.append:
+			LOGGER.info(f"Existing MBTiles output. Appending to '{args.output}'...")
 
-		t1 = time.time()
+			conn, cur = connect(args.output, args.compression, True)
+		else:
+			LOGGER.info(f"Existing MBTiles output. Moving MBTiles to '{args.output}'...")
 
-		conn, cur = move_and_connect(args.output, args.compression, workers, args.batch_size)
+			t1 = time.time()
 
-		LOGGER.info(f"Moved MBTiles '{args.output}' in {time.time() - t1:.2f}s!")
+			conn, cur = move_and_connect(args.output, args.compression, workers, args.batch_size)
+
+			LOGGER.info(f"Moved MBTiles '{args.output}' in {time.time() - t1:.2f}s!")
 	else:
 		conn, cur = connect(args.output, True)
 
