@@ -76,17 +76,7 @@ def setup_command():
 
 # ========= UTILS =========
 def parse_bounds(bounds):
-	parts = bounds.split(",")
-
-	if len(parts) != 4:
-		raise ValueError(f"Invalid bounds format '{bounds}'")
-
-	bounds = [float(x) for x in parts]
-
-	if bounds[0] >= bounds[2] or bounds[0] < -MAX_LON or bounds[2] > MAX_LON or bounds[1] >= bounds[3] or bounds[1] < -MAX_LAT or bounds[3] > MAX_LAT:
-		raise ValueError(f"Invalid bounds values '{bounds}'")
-
-	return bounds
+	return [float(x) for x in bounds.split(",")]
 
 
 def encode_array(bounds):
