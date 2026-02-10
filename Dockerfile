@@ -171,6 +171,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		bzip2 \
 		zstd \
 		p7zip-full \
+		rar \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
