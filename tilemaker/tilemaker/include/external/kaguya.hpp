@@ -12504,7 +12504,7 @@ namespace kaguya
 			
 			/// @brief sets arg as the new value for the pause of the collector. Returns the previous value for pause.
 			int steppause(int value) { return lua_gc(state_, LUA_GCSETPAUSE, value); }
-			
+
 			///  @brief sets arg as the new value for the step multiplier of the collector. Returns the previous value for step.
 			int setstepmul(int value) { return lua_gc(state_, LUA_GCSETSTEPMUL, value); }
 
