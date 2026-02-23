@@ -31,6 +31,11 @@
 
 #define CRS_ATTRIBUTE_NAME "_CRS"
 
+// UUID identifying the multiscales zarr convention
+// (https://github.com/zarr-conventions/multiscales)
+constexpr const char *ZARR_MULTISCALES_UUID =
+    "d35379db-88df-4056-af3a-620245f8e347";
+
 const CPLCompressor *ZarrGetShuffleCompressor();
 const CPLCompressor *ZarrGetShuffleDecompressor();
 const CPLCompressor *ZarrGetQuantizeDecompressor();
@@ -667,6 +672,8 @@ class ZarrV3Group final : public ZarrGroupBase
     std::shared_ptr<ZarrArray> LoadArray(const std::string &osArrayName,
                                          const std::string &osZarrayFilename,
                                          const CPLJSONObject &oRoot) const;
+
+    void GenerateMultiscalesMetadata(const char *pszResampling = nullptr);
 
     std::shared_ptr<GDALMDArray> CreateMDArray(
         const std::string &osName,
@@ -1345,6 +1352,22 @@ class ZarrV3Array final : public ZarrArray
     mutable bool m_bOverviewsLoaded = false;
     mutable std::vector<std::shared_ptr<GDALMDArray>> m_apoOverviews{};
 
+    /** Shard write cache: accumulates dirty inner chunks per shard, encodes
+     * each shard exactly once on FlushShardCache() (called from Flush()).
+     * Without this cache, FlushDirtyBlockSharded() would re-read, decode,
+     * overlay, re-encode, and write the entire shard for every inner chunk,
+     * resulting in O(N) encode cycles per shard where N = inner chunks/shard.
+     */
+    struct ShardWriteEntry
+    {
+        ZarrByteVectorQuickResize abyShardBuffer{};
+        std::vector<bool> abDirtyInnerChunks{};
+    };
+
+    // Note: cache is unbounded - one entry per shard written. For very large
+    // rasters, consider adding LRU eviction in a follow-up.
+    mutable std::map<std::string, ShardWriteEntry> m_oShardWriteCache{};
+
     ZarrV3Array(const std::shared_ptr<ZarrSharedResource> &poSharedResource,
                 const std::shared_ptr<ZarrGroupBase> &poParent,
                 const std::string &osName,
@@ -1383,6 +1406,8 @@ class ZarrV3Array final : public ZarrArray
 
     void LoadOverviews() const;
 
+    void ReconstructCreationOptionsFromCodecs();
+
   public:
     ~ZarrV3Array() override;
 
@@ -1415,6 +1440,11 @@ class ZarrV3Array final : public ZarrArray
 
     std::shared_ptr<GDALMDArray> GetOverview(int idx) const override;
 
+    CPLErr BuildOverviews(const char *pszResampling, int nOverviews,
+                          const int *panOverviewList,
+                          GDALProgressFunc pfnProgress, void *pProgressData,
+                          CSLConstList papszOptions) override;
+
   protected:
     std::string GetDataDirectory() const override;
 
@@ -1424,6 +1454,10 @@ class ZarrV3Array final : public ZarrArray
     bool AllocateWorkingBuffers() const override;
 
     bool FlushDirtyBlock() const override;
+    bool FlushDirtyBlockSharded() const;
+    bool FlushSingleShard(const std::string &osFilename,
+                          ShardWriteEntry &entry) const;
+    bool FlushShardCache() const;
 
     std::string BuildChunkFilename(const uint64_t *blockIndices) const override;
 
