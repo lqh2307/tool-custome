@@ -88,6 +88,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libbrotli-dev \
 		libarchive-dev \
 		liblzma-dev \
+		libfreexl-dev \
 		openjdk-21-jdk \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
@@ -162,6 +163,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libbrotli1 \
 		libarchive13t64 \
 		liblzma5 \
+		libfreexl1 \
 		openjdk-21-jre \
 		zip \
 		unzip \

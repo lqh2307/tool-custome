@@ -402,19 +402,17 @@ void ProcessLayer(
 	std::string layerName = sharedData.layers.layers[ltx.at(0)].name;
 	vtzero::layer_builder vtLayer{tile, layerName, sharedData.config.mvtVersion, bbox.hires ? 8192u : 4096u};
 
-	if (!existingTile.empty()) {
-		vtzero::layer existingLayer = existingTile.get_layer_by_name(layerName);
-		if (existingLayer) {
-			while (auto feature = existingLayer.next_feature()) {
-				vtzero::geometry_feature_builder fb{vtLayer};
-				if (feature.has_id())
-					fb.set_id(feature.id());
-				fb.set_geometry(feature.geometry());
-				while (auto property = feature.next_property()) {
-					fb.add_property(property.key(), property.value());
-				}
-				fb.commit();
+	vtzero::layer existingLayer = existingTile.get_layer_by_name(layerName);
+	if (existingLayer) {
+		while (auto feature = existingLayer.next_feature()) {
+			vtzero::geometry_feature_builder fb{vtLayer};
+			if (feature.has_id())
+				fb.set_id(feature.id());
+			fb.set_geometry(feature.geometry());
+			while (auto property = feature.next_property()) {
+				fb.add_property(property.key(), property.value());
 			}
+			fb.commit();
 		}
 	}
 
@@ -506,19 +504,19 @@ void outputProc(
 
 	// Write to file or sqlite
 	string outputdata, compressed;
-	tile.serialize(outputdata);
-	if (outputdata.empty()) {
-		// No data to write
-		return;
-	}
-
 	if (sharedData.outputMode == OptionsParser::OutputMode::MBTiles) {
 		// Write to sqlite
+		//tile.SerializeToString(&outputdata);
+		tile.serialize(outputdata);
+
 		if (sharedData.config.compress) { compressed = compress_string(outputdata, Z_DEFAULT_COMPRESSION, sharedData.config.gzip); }
 		sharedData.mbtiles.saveTile(zoom, bbox.index.x, bbox.index.y, sharedData.config.compress ? &compressed : &outputdata, sharedData.mergeSqlite);
+
 	} else if (sharedData.outputMode == OptionsParser::OutputMode::PMTiles) {
 		// Write to pmtiles
+		tile.serialize(outputdata);
 		sharedData.pmtiles.saveTile(zoom, bbox.index.x, bbox.index.y, outputdata);
+
 	} else {
 		// Write to file
 		stringstream dirname, filename;
@@ -527,11 +525,13 @@ void outputProc(
 		boost::filesystem::create_directories(dirname.str());
 		fstream outfile(filename.str(), ios::out | ios::trunc | ios::binary);
 		if (sharedData.config.compress) {
+			//tile.SerializeToString(&outputdata);
+			tile.serialize(outputdata);
 			outfile << compress_string(outputdata, Z_DEFAULT_COMPRESSION, sharedData.config.gzip);
 		} else {
+			tile.serialize(outputdata);
 			outfile << outputdata;
 		}
-
 		outfile.close();
 	}
 }

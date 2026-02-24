@@ -1,0 +1,108 @@
+Content-Type: multipart/mixed; boundary=xxOGRBoundaryxx
+
+--xxOGRBoundaryxx
+Content-Disposition: attachment; filename=result.gml
+Content-Type: application/binary
+Content-Transfer-Encoding: binary
+
+<?xml version="1.0" encoding="utf-8" ?>
+<ogr:FeatureCollection
+     gml:id="aFeatureCollection"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://ogr.maptools.org/ result.xsd"
+     xmlns:ogr="http://ogr.maptools.org/"
+     xmlns:gml="http://www.opengis.net/gml/3.2">
+  <gml:boundedBy><gml:Envelope srsName="urn:ogc:def:crs:EPSG::27700"><gml:lowerCorner>0 0</gml:lowerCorner><gml:upperCorner>100 100</gml:upperCorner></gml:Envelope></gml:boundedBy>
+                                                                                                                                                                         
+  <ogr:featureMember>
+    <ogr:multi gml:id="multi.0">
+      <gml:boundedBy><gml:Envelope srsName="urn:ogc:def:crs:EPSG::27700"><gml:lowerCorner>0 0</gml:lowerCorner><gml:upperCorner>100 100</gml:upperCorner></gml:Envelope></gml:boundedBy>
+      <ogr:geometryProperty><gml:MultiSurface srsName="urn:ogc:def:crs:EPSG::27700" gml:id="multi.geom.0"><gml:surfaceMember><gml:Polygon gml:id="multi.geom.0.0"><gml:exterior><gml:LinearRing><gml:posList>0 0 0 10 10 0 0 0</gml:posList></gml:LinearRing></gml:exterior><gml:interior><gml:LinearRing><gml:posList>1 1 2 2 2 1 1 1</gml:posList></gml:LinearRing></gml:interior></gml:Polygon></gml:surfaceMember><gml:surfaceMember><gml:Polygon gml:id="multi.geom.0.1"><gml:exterior><gml:LinearRing><gml:posList>100 50 50 100 100 100 100 50</gml:posList></gml:LinearRing></gml:exterior></gml:Polygon></gml:surfaceMember></gml:MultiSurface></ogr:geometryProperty>
+      <ogr:ID>4</ogr:ID>
+      <ogr:NAME>mp</ogr:NAME>
+      <ogr:WKT>MULTIPOLYGON(((0 0,0 10,10 0,0 0),(1 1,2 2,2 1,1 1)),((100 50,50 100,100 100)))</ogr:WKT>
+    </ogr:multi>
+  </ogr:featureMember>
+  <ogr:featureMember>
+    <ogr:multi gml:id="multi.1">
+      <gml:boundedBy><gml:Envelope srsName="urn:ogc:def:crs:EPSG::27700"><gml:lowerCorner>3 0</gml:lowerCorner><gml:upperCorner>40 10</gml:upperCorner></gml:Envelope></gml:boundedBy>
+      <ogr:geometryProperty><gml:Polygon srsName="urn:ogc:def:crs:EPSG::27700" gml:id="multi.geom.1"><gml:exterior><gml:LinearRing><gml:posList>30 0 30 10 40 10 40 0 3 0 30 0</gml:posList></gml:LinearRing></gml:exterior><gml:interior><gml:LinearRing><gml:posList>31 1 32 2 32 1 31 1</gml:posList></gml:LinearRing></gml:interior></gml:Polygon></ogr:geometryProperty>
+      <ogr:ID>5</ogr:ID>
+      <ogr:NAME>poly</ogr:NAME>
+      <ogr:WKT>POLYGON((30 0,30 10,40 10,40 0,3 0),(31 1,32 2,32 1,31 1))</ogr:WKT>
+    </ogr:multi>
+  </ogr:featureMember>
+</ogr:FeatureCollection>
+
+--xxOGRBoundaryxx
+Content-Disposition: attachment; filename=result.xsd
+Content-Type: application/binary
+Content-Transfer-Encoding: binary
+
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema 
+    targetNamespace="http://ogr.maptools.org/"
+    xmlns:ogr="http://ogr.maptools.org/"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:gml="http://www.opengis.net/gml/3.2"
+    xmlns:gmlsf="http://www.opengis.net/gmlsf/2.0"
+    elementFormDefault="qualified"
+    version="1.0">
+<xs:annotation>
+  <xs:appinfo source="http://schemas.opengis.net/gmlsfProfile/2.0/gmlsfLevels.xsd">
+    <gmlsf:ComplianceLevel>0</gmlsf:ComplianceLevel>
+  </xs:appinfo>
+</xs:annotation>
+<xs:import namespace="http://www.opengis.net/gml/3.2" schemaLocation="http://schemas.opengis.net/gml/3.2.1/gml.xsd"/>
+<xs:import namespace="http://www.opengis.net/gmlsf/2.0" schemaLocation="http://schemas.opengis.net/gmlsfProfile/2.0/gmlsfLevels.xsd"/>
+<xs:element name="FeatureCollection" type="ogr:FeatureCollectionType" substitutionGroup="gml:AbstractFeature"/>
+<xs:complexType name="FeatureCollectionType">
+  <xs:complexContent>
+    <xs:extension base="gml:AbstractFeatureType">
+      <xs:sequence minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="featureMember">
+          <xs:complexType>
+            <xs:complexContent>
+              <xs:extension base="gml:AbstractFeatureMemberType">
+                <xs:sequence>
+                  <xs:element ref="gml:AbstractFeature"/>
+                </xs:sequence>
+              </xs:extension>
+            </xs:complexContent>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:extension>
+  </xs:complexContent>
+</xs:complexType>
+<xs:element name="multi" type="ogr:multi_Type" substitutionGroup="gml:AbstractFeature"/>
+<xs:complexType name="multi_Type">
+  <xs:complexContent>
+    <xs:extension base="gml:AbstractFeatureType">
+      <xs:sequence>
+        <xs:element name="geometryProperty" type="gml:GeometryPropertyType" nillable="true" minOccurs="0" maxOccurs="1"/><!-- srsName="urn:ogc:def:crs:EPSG::27700" -->
+        <xs:element name="ID" nillable="true" minOccurs="0" maxOccurs="1">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="NAME" nillable="true" minOccurs="0" maxOccurs="1">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="WKT" nillable="true" minOccurs="0" maxOccurs="1">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+      </xs:sequence>
+    </xs:extension>
+  </xs:complexContent>
+</xs:complexType>
+</xs:schema>
+
+--xxOGRBoundaryxx--

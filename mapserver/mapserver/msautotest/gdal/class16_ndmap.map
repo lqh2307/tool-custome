@@ -1,0 +1,53 @@
+#
+# Test of classification methods on a floating point input with provided
+# NODATA, scaling and bucket values. 
+#
+MAP
+
+NAME TEST
+STATUS ON
+SIZE 400 300
+EXTENT 0.5 0.5 399.5 299.5
+IMAGECOLOR 255 255 0
+
+IMAGETYPE png8_t
+
+OUTPUTFORMAT
+  NAME png8_t
+  DRIVER "AGG/PNG8"
+  IMAGEMODE RGB
+  TRANSPARENT ON
+END
+
+LAYER
+  NAME grid1
+  TYPE raster
+  STATUS default
+  DATA data/float.tif
+  PROCESSING "NODATA=-6"
+  PROCESSING "SCALE=-100.5,100.5"
+  PROCESSING "SCALE_BUCKETS=201"
+  CLASS 
+    NAME "red"
+    EXPRESSION ([pixel] < -3)
+    STYLE
+        COLOR 255 0 0 
+    END
+  END
+  CLASS 
+    NAME "green"
+    EXPRESSION ([pixel] >= -3 and [pixel] < 3)
+    STYLE
+        COLOR 0 255 0 
+    END
+  END
+  CLASS 
+    NAME "blue"
+    EXPRESSION ([pixel] >= 3)
+    STYLE
+        COLOR 0 0 255
+    END
+  END
+END
+
+END # of map file

@@ -1,0 +1,10 @@
+build
+build_vagrant
+build_vagrant_proj7
+install-vagrant-proj
+*.swp
+nbproject
+tags
+tests/map.png
+.vagrant
+.idea

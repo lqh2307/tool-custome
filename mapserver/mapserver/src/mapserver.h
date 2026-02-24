@@ -3233,12 +3233,6 @@ MS_DLL_EXPORT int msLayerMakePlainTimeFilter(layerObj *lp,
                                              const char *timestring,
                                              const char *timefield);
 
-MS_DLL_EXPORT int msLayerApplyCondSQLFilterToLayer(FilterEncodingNode *psNode,
-                                                   mapObj *map,
-                                                   int iLayerIndex);
-MS_DLL_EXPORT int msLayerApplyPlainFilterToLayer(FilterEncodingNode *psNode,
-                                                 mapObj *map, int iLayerIndex);
-
 /* maplayer.c */
 MS_DLL_EXPORT int msLayerGetNumFeatures(layerObj *layer);
 
@@ -3302,6 +3296,9 @@ rectObj msUVRASTERGetSearchRect(layerObj *layer, mapObj *map);
 void msRasterLabelLayerUseMapExtentAndProjectionForNextWhichShapes(
     layerObj *layer, mapObj *map);
 rectObj msRasterLabelGetSearchRect(layerObj *layer, mapObj *map);
+
+void msContourLayerUseMapExtentAndProjectionForNextWhichShapes(layerObj *layer,
+                                                               mapObj *map);
 
 /* ==================================================================== */
 /*      Prototypes for functions in mapdraw.c                           */
@@ -3506,7 +3503,8 @@ MS_DLL_EXPORT int msIntegerInArray(const int value, int *array,
                                    int numelements);
 
 MS_DLL_EXPORT int msExtentsOverlap(mapObj *map, layerObj *layer);
-MS_DLL_EXPORT char *msBuildOnlineResource(mapObj *map, cgiRequestObj *req);
+MS_DLL_EXPORT char *msBuildOnlineResource(const mapObj *map,
+                                          const cgiRequestObj *req);
 
 /* For mapswf */
 MS_DLL_EXPORT int getRgbColor(mapObj *map, int i, int *r, int *g,
@@ -3718,7 +3716,8 @@ MS_DLL_EXPORT int msCopyProjection(projectionObj *dst,
                                    const projectionObj *src);
 MS_DLL_EXPORT int msCopyProjectionExtended(projectionObj *dst,
                                            const projectionObj *src,
-                                           char **args, int num_args);
+                                           const char *const *args,
+                                           int num_args);
 int msCopyExpression(expressionObj *dst, const expressionObj *src);
 int msCopyProjection(projectionObj *dst, const projectionObj *src);
 MS_DLL_EXPORT int msCopyRasterBuffer(rasterBufferObj *dst,

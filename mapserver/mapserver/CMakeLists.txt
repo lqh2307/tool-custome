@@ -16,7 +16,7 @@ include(CheckIncludeFile)
 include(CheckCSourceCompiles)
 
 set (MapServer_VERSION_MAJOR 8)
-set (MapServer_VERSION_MINOR 6)
+set (MapServer_VERSION_MINOR 7)
 set (MapServer_VERSION_REVISION 0)
 set (MapServer_VERSION_SUFFIX "")
 
@@ -327,7 +327,7 @@ endif()
 
 set(mapserver_SOURCES src/fontcache.c
 src/cgiutil.c src/mapgeos.c src/maporaclespatial.c src/mapsearch.c src/mapwms.cpp src/classobject.c
-src/mapgml.c src/mapoutput.c src/mapwmslayer.c src/layerobject.c src/mapgraticule.c src/mapows.c src/mapogcapi.cpp
+src/mapgml.c src/mapoutput.c src/mapwmslayer.c src/layerobject.c src/mapgraticule.c src/mapows.cpp src/mapogcapi.cpp
 src/mapservutil.c src/mapxbase.c src/maphash.c src/mapowscommon.c src/mapshape.c src/mapxml.c src/mapbits.c
 src/maphttp.c src/mapparser.c src/mapstring.cpp src/mapxmp.c src/mapcairo.c src/mapimageio.c
 src/mappluginlayer.c src/mapsymbol.c src/mapchart.c src/mapimagemap.c src/mappool.c src/maptclutf.c

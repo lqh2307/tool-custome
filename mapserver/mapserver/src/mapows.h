@@ -144,7 +144,7 @@ typedef struct {
 MS_DLL_EXPORT int msOWSDispatch(mapObj *map, cgiRequestObj *request,
                                 int ows_mode);
 
-MS_DLL_EXPORT const char *msOWSLookupMetadata(hashTableObj *metadata,
+MS_DLL_EXPORT const char *msOWSLookupMetadata(const hashTableObj *metadata,
                                               const char *namespaces,
                                               const char *name);
 MS_DLL_EXPORT const char *
@@ -194,6 +194,8 @@ MS_DLL_EXPORT int msOWSParseVersionString(const char *pszVersion);
 MS_DLL_EXPORT const char *msOWSGetVersionString(int nVersion, char *pszBuffer);
 
 MS_DLL_EXPORT const char *msOWSGetLanguage(mapObj *map, const char *context);
+char *msOWSGetExpandedMetadataKey(const char *namespaces,
+                                  const char *metadata_name);
 MS_DLL_EXPORT char *msOWSGetOnlineResource(mapObj *map, const char *namespaces,
                                            const char *metadata_name,
                                            cgiRequestObj *req);
