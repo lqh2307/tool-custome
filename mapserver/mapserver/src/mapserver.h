@@ -73,6 +73,12 @@
 #define MS_UNLIKELY(x) (x)
 #endif
 
+/** Macro to compute the minimum of 2 values */
+#define MS_MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+/** Macro to compute the maximum of 2 values */
+#define MS_MAX(a, b) (((a) > (b)) ? (a) : (b))
+
 /* definition of  ms_int32/ms_uint32 */
 #include <limits.h>
 #ifndef _WIN32
@@ -3348,6 +3354,12 @@ MS_DLL_EXPORT int msValueToRange(styleObj *style, double fieldVal,
 MS_DLL_EXPORT int WARN_UNUSED msDrawMarkerSymbol(mapObj *map, imageObj *image,
                                                  pointObj *p, styleObj *style,
                                                  double scalefactor);
+
+int WARN_UNUSED msDrawMarkerSymbolInternal(mapObj *map, imageObj *image,
+                                           pointObj *p, styleObj *style,
+                                           double scalefactor,
+                                           bool adjustMarkerPos);
+
 MS_DLL_EXPORT int WARN_UNUSED msDrawLineSymbol(mapObj *map, imageObj *image,
                                                shapeObj *p, styleObj *style,
                                                double scalefactor);
