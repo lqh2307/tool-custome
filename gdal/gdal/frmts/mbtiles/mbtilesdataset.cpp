@@ -3021,6 +3021,10 @@ bool MBTilesDataset::CreateInternal(const char *pszFilename, int nXSize,
     }
 
     sqlite3_exec(hDB, "PRAGMA synchronous = OFF", nullptr, nullptr, nullptr);
+    sqlite3_exec(hDB, "PRAGMA journal_mode = OFF", nullptr, nullptr, nullptr);
+    sqlite3_exec(hDB, "PRAGMA mmap_size = 0", nullptr, nullptr, nullptr);
+    sqlite3_exec(hDB, "PRAGMA page_size = 65536", nullptr, nullptr, nullptr);
+    sqlite3_exec(hDB, "PRAGMA foreign_keys = OFF", nullptr, nullptr, nullptr);
 
     rc = sqlite3_exec(hDB,
                       "CREATE TABLE tiles ("
