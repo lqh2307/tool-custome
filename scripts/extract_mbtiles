@@ -342,11 +342,9 @@ def connect(file_path, ensure_schema = None):
 	conn = sqlite3.connect(file_path)
 	cur = conn.cursor()
 
-	cur.execute("PRAGMA journal_mode = OFF;")
-	cur.execute("PRAGMA synchronous = OFF;")
-	cur.execute("PRAGMA foreign_keys = OFF;")
-	cur.execute("PRAGMA encoding = 'UTF-8';")
 	cur.execute("PRAGMA page_size = 65536;")
+	cur.execute("PRAGMA synchronous = OFF;")
+	cur.execute("PRAGMA journal_mode = OFF;")
 
 	if ensure_schema:
 		cur.execute("CREATE TABLE IF NOT EXISTS metadata (name TEXT NOT NULL, value TEXT NOT NULL, UNIQUE (name));")

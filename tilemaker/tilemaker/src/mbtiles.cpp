@@ -20,11 +20,9 @@ MBTiles::~MBTiles() {
 void MBTiles::openForWriting(string &filename) {
 	db.init(filename);
 
+	db << "PRAGMA page_size = 65536;";
 	db << "PRAGMA synchronous = OFF;";
 	db << "PRAGMA journal_mode = OFF;";
-	db << "PRAGMA mmap_size = 0;";
-	db << "PRAGMA page_size = 65536;";
-	db << "PRAGMA foreign_keys = OFF;";
 
 	db << "CREATE TABLE IF NOT EXISTS metadata (name text, value text, UNIQUE (name));";
 	db << "CREATE TABLE IF NOT EXISTS tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);";

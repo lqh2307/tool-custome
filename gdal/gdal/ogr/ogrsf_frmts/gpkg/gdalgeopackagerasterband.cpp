@@ -2995,6 +2995,8 @@ CPLErr GDALGPKGMBTilesLikePseudoDataset::WriteShiftedTile(
                      m_osTempDBFilename.c_str());
             return CE_Failure;
         }
+
+        SQLCommand(m_hTempDB, "PRAGMA page_size = 65536");
         SQLCommand(m_hTempDB, "PRAGMA synchronous = OFF");
         SQLCommand(m_hTempDB, "PRAGMA journal_mode = OFF");
         SQLCommand(m_hTempDB, "CREATE TABLE partial_tiles("

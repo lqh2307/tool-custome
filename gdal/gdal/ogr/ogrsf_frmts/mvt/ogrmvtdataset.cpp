@@ -6230,10 +6230,9 @@ GDALDataset *OGRMVTWriterDataset::Create(const char *pszFilename, int nXSize,
     {
         CPL_IGNORE_RET_VAL(SQLCommand(
             hDB,
-            "PRAGMA page_size = 4096;"  // 4096: default since sqlite 3.12
+            "PRAGMA page_size = 65536;"
             "PRAGMA synchronous = OFF;"
             "PRAGMA journal_mode = OFF;"
-            "PRAGMA temp_store = MEMORY;"
             "CREATE TABLE temp(z INTEGER, x INTEGER, y INTEGER, layer TEXT, "
             "idx INTEGER, feature BLOB, geomtype INTEGER, area_or_length "
             "DOUBLE);"
@@ -6390,10 +6389,9 @@ GDALDataset *OGRMVTWriterDataset::Create(const char *pszFilename, int nXSize,
 
         if (SQLCommand(
                 poDS->m_hDBMBTILES,
-                "PRAGMA page_size = 4096;"  // 4096: default since sqlite 3.12
+                "PRAGMA page_size = 65536;"
                 "PRAGMA synchronous = OFF;"
                 "PRAGMA journal_mode = OFF;"
-                "PRAGMA temp_store = MEMORY;"
                 "CREATE TABLE metadata (name text, value text);"
                 "CREATE TABLE tiles (zoom_level integer, tile_column integer, "
                 "tile_row integer, tile_data blob, "

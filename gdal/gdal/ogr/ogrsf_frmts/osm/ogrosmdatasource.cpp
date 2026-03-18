@@ -3134,16 +3134,6 @@ bool OGROSMDataSource::SetDBOptions()
         return false;
     }
 
-    rc = sqlite3_exec(m_hDB, "PRAGMA temp_store = MEMORY", nullptr, nullptr,
-                      &pszErrMsg);
-    if (rc != SQLITE_OK)
-    {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "Unable to run PRAGMA temp_store : %s", pszErrMsg);
-        sqlite3_free(pszErrMsg);
-        return false;
-    }
-
     SetCacheSize();
 
     if (!StartTransactionCacheDB())

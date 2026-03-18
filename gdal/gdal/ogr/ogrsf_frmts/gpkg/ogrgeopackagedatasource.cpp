@@ -5059,10 +5059,6 @@ int GDALGeoPackageDataset::Create(const char *pszFilename, int nXSize,
         SQLCommand(hDB, "PRAGMA synchronous = OFF");
     }
 
-    /* OGR UTF-8 support. If we set the UTF-8 Pragma early on, it */
-    /* will be written into the main file and supported henceforth */
-    SQLCommand(hDB, "PRAGMA encoding = \"UTF-8\"");
-
     if (bFileExists)
     {
         VSILFILE *fp = VSIFOpenL(pszFilename, "rb");
