@@ -98,7 +98,7 @@ def lonlat4326_to_xy3857(lon, lat):
 
 
 def xy3857_to_lonlat4326(x, y):
-	return limit_value(x / SPHERICAL_RADIUS * MAX_LON / math.pi, -MAX_LON, MAX_LON), limit_value(math.atan(math.sinh(y / SPHERICAL_RADIUS)) * MAX_LON / math.pi, -MAX_CAL_LAT, MAX_CAL_LAT)
+	return limit_value(x / SPHERICAL_RADIUS * MAX_LON / math.pi, -MAX_LON, MAX_LON), limit_value(math.atan(math.sinh(y / SPHERICAL_RADIUS)) * MAX_LAT / math.pi, -MAX_CAL_LAT, MAX_CAL_LAT)
 
 
 def get_xyz_from_lonlatz(lon, lat, z, scheme="tms"):
