@@ -117,9 +117,9 @@ ARG PREFIX_DIR=/usr/local/opt
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
 		python3 \
+		python3-pip \
 		python3-numpy \
 		python3-jsonschema \
-		pipx \
 		liblua5.4-0 \
 		shapelib \
 		libsqlite3-0 \
@@ -173,7 +173,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		zstd \
 		p7zip-full \
 		rar \
-	&& pipx install --pip-args="--no-cache-dir" pillow rasterio mapbox-vector-tile \
+	&& python3 -m pip install --no-cache-dir Pillow rasterio mapbox-vector-tile \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/* \
