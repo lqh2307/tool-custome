@@ -183,7 +183,7 @@ COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${HOME}/.local/bin:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/scripts:${PATH}
+ENV PATH=/root/.local/bin:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/scripts:${PATH}
 ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib
 ENV PYTHONPATH=${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages
 
