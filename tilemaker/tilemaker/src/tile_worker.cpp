@@ -27,50 +27,68 @@ namespace std {
 void ReorderMultiLinestring(MultiLinestring &input, MultiLinestring &output) {
 	// create a map of the start/end points of each linestring
 	// (we should be able to do std::map<Point,unsigned>, but that errors)
-	std::unordered_map<xy_pair,unsigned> startPoints;
-	std::unordered_map<xy_pair,unsigned> endPoints;
+	std::unordered_map<xy_pair,std::vector<unsigned>> startPoints;
+	std::unordered_map<xy_pair,std::vector<unsigned>> endPoints;
+	startPoints.reserve(input.size());
+	endPoints.reserve(input.size());
+
 	for (unsigned i=0; i<input.size(); i++) {
-		startPoints[xy_pair(input[i][0].x(),input[i][0].y())] = i;
-		endPoints[xy_pair(input[i][input[i].size()-1].x(),input[i][input[i].size()-1].y())] = i;
+		const Linestring &ls = input[i];
+		if (ls.empty()) continue;
+		xy_pair start(ls[0].x(), ls[0].y());
+		xy_pair end(ls.back().x(), ls.back().y());
+		startPoints[start].push_back(i);
+		endPoints[end].push_back(i);
 	}
 
-	// then for each linestring:
-	// [skip if it's already been handled]
-	// 1. create an output linestring from it
-	// 2. look to see if there's another linestring which starts at our end point, or terminates at our start point
-	// 3. if there is, then append it, remove from the map, and repeat from 2
+	auto choose_unhandled = [&](const std::vector<unsigned> &idxVec, const std::vector<bool> &used)->int {
+		for (unsigned candidate : idxVec) {
+			if (!used[candidate]) return candidate;
+		}
+
+		return -1;
+	};
+
 	std::vector<bool> added(input.size(), false);
+	output.clear();
+	output.reserve(input.size());
+
 	for (unsigned i=0; i<input.size(); i++) {
 		if (added[i]) continue;
 		Linestring ls = std::move(input[i]);
 		added[i] = true;
+
 		while (true) {
-			Point lastPoint = ls[ls.size()-1];
-			auto foundStart = startPoints.find(xy_pair(lastPoint.x(),lastPoint.y()));
-			if (foundStart != startPoints.end()) {
-				unsigned idx = foundStart->second;
-				if (!added[idx] && input[idx].size()+ls.size()<6000) {
-					ls.insert(ls.end(), input[idx].begin()+1, input[idx].end());
-					added[idx] = true;
-					continue;
-				}
+			if (ls.empty()) break;
+
+			const Point lastPoint = ls.back();
+			const xy_pair lastKey(lastPoint.x(),lastPoint.y());
+			int idx = -1;
+			auto iterStart = startPoints.find(lastKey);
+			if (iterStart != startPoints.end()) idx = choose_unhandled(iterStart->second,added);
+
+			if (idx>=0 && !added[idx] && input[idx].size()+ls.size()<6000) {
+				ls.insert(ls.end(), input[idx].begin()+1, input[idx].end());
+				added[idx] = true;
+				continue;
 			}
 
-			Point firstPoint = ls[0];
-			auto foundEnd = endPoints.find(xy_pair(firstPoint.x(),firstPoint.y()));
-			if (foundEnd != endPoints.end()) {
-				unsigned idx = foundEnd->second;
-				if (!added[idx] && input[idx].size()+ls.size()<6000) {
-					ls.insert(ls.begin(), input[idx].begin(), input[idx].end()-1);
-					added[idx] = true;
-					continue;
-				}
+			const Point firstPoint = ls.front();
+			const xy_pair firstKey(firstPoint.x(),firstPoint.y());
+			auto iterEnd = endPoints.find(firstKey);
+			idx = -1;
+			if (iterEnd != endPoints.end()) idx = choose_unhandled(iterEnd->second,added);
+
+			if (idx>=0 && !added[idx] && input[idx].size()+ls.size()<6000) {
+				ls.insert(ls.begin(), input[idx].begin(), input[idx].end()-1);
+				added[idx] = true;
+				continue;
 			}
 
 			break;
 		}
-		output.resize(output.size()+1);
-		output[output.size()-1] = std::move(ls);
+
+		output.push_back(std::move(ls));
 	}
 }
 
@@ -115,6 +133,8 @@ void writeMultiLinestring(
 	const MultiLinestring* toWrite = nullptr;
 
 	if (simplifyLevel>0) {
+		tmp.reserve(mls.size());
+
 		for(auto const &ls: mls) {
 			if (simplifyAlgo==LayerDef::VISVALINGAM) {
 				tmp.push_back(simplifyVis(ls, simplifyLevel));

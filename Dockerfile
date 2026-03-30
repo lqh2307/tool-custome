@@ -118,9 +118,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
 		python3 \
 		python3-numpy \
-		python3-rasterio \
-		python3-pil \
 		python3-jsonschema \
+		pipx \
 		liblua5.4-0 \
 		shapelib \
 		libsqlite3-0 \
@@ -174,15 +173,17 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		zstd \
 		p7zip-full \
 		rar \
+	&& pipx install --pip-args="--no-cache-dir" pillow rasterio mapbox-vector-tile \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
-	&& rm -rf /var/lib/apt/lists/*
+	&& rm -rf /var/lib/apt/lists/* \
+	&& rm -rf /root/.cache/pip
 
 COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/scripts:${PATH}
+ENV PATH=${HOME}/.local/bin:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/scripts:${PATH}
 ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib
 ENV PYTHONPATH=${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages
 

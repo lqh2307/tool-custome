@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from multiprocessing import Pool
+import mapbox_vector_tile
 from pathlib import Path
 from PIL import Image
 import threading
@@ -34,6 +35,12 @@ MAX_CAL_LAT = 85.051129
 
 # ========= SIGNALS =========
 def setup_signals():
+	"""
+	Set up SIGINT and SIGTERM handlers for graceful exit.
+	
+	Returns:
+	None.
+	"""
 	signal.signal(signal.SIGINT, lambda sig, frame: (
 		LOGGER.info("Received 'SIGINT' signal. Exitting..."),
 
@@ -49,6 +56,12 @@ def setup_signals():
 
 # ========= COMMAND =========
 def setup_command():
+	"""
+	Configure command line arguments with argparse.
+	
+	Returns:
+	argparse.ArgumentParser.
+	"""
 	parser = argparse.ArgumentParser(description="Extract MBTiles")
 	parser.add_argument("-o", "--output", required=True, type=Path, help="Output MBTiles file path")
 	parser.add_argument("-w", "--workers", required=False, type=int, default=1, help="Number of worker processes")
@@ -66,6 +79,8 @@ def setup_command():
 	input_group = parser.add_mutually_exclusive_group(required=False)
 	input_group.add_argument("-i", "--inputs", nargs="+", type=Path, help="Input MBTiles file paths")
 	input_group.add_argument("-il", "--inputs-list", type=Path, help="Text file path containing input MBTiles file paths (one per line)")
+	input_group.add_argument("-ij", "--inputs-json", type=str, help="JSON string: [{\"path\":..., \"minzoom\":..., \"maxzoom\":...}, ...]")
+	input_group.add_argument("-ijf", "--inputs-json-file", type=Path, help="JSON file path containing list of source objects with path/minzoom/maxzoom")
 
 	metadata_group = parser.add_mutually_exclusive_group(required=False)
 	metadata_group.add_argument("-mj", "--metadata-json", type=str, help="Metadata JSON string to update metadata table")
@@ -76,14 +91,40 @@ def setup_command():
 
 # ========= UTILS =========
 def parse_bounds(bounds):
+	"""
+	Parse bounds string "minLon,minLat,maxLon,maxLat" into list of floats.
+	
+	Args:
+	bounds (str): bounds (str).
+	Returns:
+	list[float].
+	"""
 	return [float(x) for x in bounds.split(",")]
 
 
 def encode_array(bounds):
+	"""
+	Encode list into comma-separated string.
+	
+	Args:
+	bounds (list[float]): bounds (list[float]).
+	Returns:
+	str.
+	"""
 	return ",".join(str(x) for x in bounds)
 
 
 def limit_value(value, min = None, max = None):
+	"""
+	Clamp value into [min, max] range when min/max specified.
+	
+	Args:
+	value: value.
+	min: min.
+	max: max.
+	Returns:
+	float.
+	"""
 	if min is not None and value < min:
 		value = min
 
@@ -94,14 +135,43 @@ def limit_value(value, min = None, max = None):
 
 
 def lonlat4326_to_xy3857(lon, lat):
+	"""
+	Convert longitude/latitude (EPSG:4326) to Web Mercator (EPSG:3857).
+	
+	Args:
+	lon: lon.
+	lat: lat.
+	Returns:
+	tuple[float,float].
+	"""
 	return limit_value(lon, -MAX_LON, MAX_LON) * math.pi / MAX_LON * SPHERICAL_RADIUS, math.log(math.tan(math.pi * (limit_value(lat, -MAX_CAL_LAT, MAX_CAL_LAT) + MAX_LAT) / (2 * MAX_LON))) * SPHERICAL_RADIUS
 
 
 def xy3857_to_lonlat4326(x, y):
+	"""
+	Convert Web Mercator (EPSG:3857) coordinates back to lon/lat (EPSG:4326).
+	
+	Args:
+	x: x.
+	y: y.
+	Returns:
+	tuple[float,float].
+	"""
 	return limit_value(x / SPHERICAL_RADIUS * MAX_LON / math.pi, -MAX_LON, MAX_LON), limit_value(math.atan(math.sinh(y / SPHERICAL_RADIUS)) * MAX_LAT / math.pi, -MAX_CAL_LAT, MAX_CAL_LAT)
 
 
 def get_xyz_from_lonlatz(lon, lat, z, scheme="tms"):
+	"""
+	Compute tile x/y indices from lon/lat at zoom z for tms/xyz scheme.
+	
+	Args:
+	lon: lon.
+	lat: lat.
+	z: z.
+	scheme: scheme.
+	Returns:
+	list[int].
+	"""
 	max_tile = 1 << z
 
 	x = (0.5 + limit_value(lon, -MAX_LON, MAX_LON) / (2 * MAX_LON)) * max_tile
@@ -114,6 +184,18 @@ def get_xyz_from_lonlatz(lon, lat, z, scheme="tms"):
 
 
 def get_lonlatz_from_xyz(x, y, z, position, scheme="tms"):
+	"""
+	Compute lon/lat coordinates for a tile x/y/z at given position in tile.
+	
+	Args:
+	x: x.
+	y: y.
+	z: z.
+	position: position.
+	scheme: scheme.
+	Returns:
+	list[float].
+	"""
 	max_tile = 1 << z
 
 	if scheme == "tms":
@@ -130,6 +212,17 @@ def get_lonlatz_from_xyz(x, y, z, position, scheme="tms"):
 
 
 def get_tile_bounds_4326(x, y, z, scheme="tms"):
+	"""
+	Get bounding box in EPSG:4326 for tile x/y/z.
+	
+	Args:
+	x: x.
+	y: y.
+	z: z.
+	scheme: scheme.
+	Returns:
+	list[float].
+	"""
 	[min_lon, max_lat, _] = get_lonlatz_from_xyz(x, y, z, "top-left", scheme)
 	[max_lon, min_lat, _] = get_lonlatz_from_xyz(x, y, z, "bottom-right", scheme)
 
@@ -137,6 +230,17 @@ def get_tile_bounds_4326(x, y, z, scheme="tms"):
 
 
 def get_tile_bounds_3857(x, y, z, scheme="tms"):
+	"""
+	Get bounding box in EPSG:3857 for tile x/y/z.
+	
+	Args:
+	x: x.
+	y: y.
+	z: z.
+	scheme: scheme.
+	Returns:
+	list[float].
+	"""
 	[min_lon, max_lat, _] = get_lonlatz_from_xyz(x, y, z, "top-left", scheme)
 	[max_lon, min_lat, _] = get_lonlatz_from_xyz(x, y, z, "bottom-right", scheme)
 
@@ -144,6 +248,19 @@ def get_tile_bounds_3857(x, y, z, scheme="tms"):
 
 
 def get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme = "tms"):
+	"""
+	Calculate lon/lat bounding box covering tile range x_min..x_max, y_min..y_max at zoom z.
+	
+	Args:
+	x_min: x_min.
+	y_min: y_min.
+	x_max: x_max.
+	y_max: y_max.
+	z: z.
+	scheme: scheme.
+	Returns:
+	list[float].
+	"""
 	[lon_min, lat_max, _] = get_lonlatz_from_xyz(x_min, y_min, z, "top-left", scheme)
 	[lon_max, lat_min, _] = get_lonlatz_from_xyz(x_max, y_max, z, "bottom-right", scheme)
 
@@ -157,6 +274,16 @@ def get_bbox_from_tiles(x_min, y_min, x_max, y_max, z, scheme = "tms"):
 
 
 def get_tiles_from_bbox(bbox, z, scheme = "tms"):
+	"""
+	Convert lon/lat bounding box to tile range at zoom z.
+	
+	Args:
+	bbox: bbox.
+	z: z.
+	scheme: scheme.
+	Returns:
+	list[int].
+	"""
 	[x_min, y_min, _] = get_xyz_from_lonlatz(bbox[0], bbox[3], z, scheme)
 	[x_max, y_max, _] = get_xyz_from_lonlatz(bbox[2], bbox[1], z, scheme)
 
@@ -170,6 +297,15 @@ def get_tiles_from_bbox(bbox, z, scheme = "tms"):
 
 
 def get_cover_bbox(bbox1, bbox2):
+	"""
+	Return covering bbox of two bboxes or one if other is None.
+	
+	Args:
+	bbox1: bbox1.
+	bbox2: bbox2.
+	Returns:
+	list[float] or None.
+	"""
 	if bbox1 and bbox2:
 		return [
 			bbox1[0] if bbox1[0] < bbox2[0] else bbox2[0],
@@ -186,6 +322,15 @@ def get_cover_bbox(bbox1, bbox2):
 
 
 def get_intersect_bbox(bbox1, bbox2):
+	"""
+	Return intersection bbox of two bboxes or None if no overlap.
+	
+	Args:
+	bbox1: bbox1.
+	bbox2: bbox2.
+	Returns:
+	list[float] or None.
+	"""
 	if bbox1 and bbox2:
 		minLon = bbox1[0] if bbox1[0] > bbox2[0] else bbox2[0]
 		minLat = bbox1[1] if bbox1[1] > bbox2[1] else bbox2[1]
@@ -203,6 +348,18 @@ def get_intersect_bbox(bbox1, bbox2):
 
 
 def process_tile(args):
+	"""
+	Re-encode tile image data into target format and options.
+	
+	Args:
+	z: z.
+	x: x.
+	y: y.
+	tile_data: tile_data.
+	save_args: save_args.
+	Returns:
+	tuple.
+	"""
 	z, x, y, tile_data, save_args = args
 
 	out = io.BytesIO()
@@ -213,6 +370,19 @@ def process_tile(args):
 
 
 def composite_tile(args):
+	"""
+	Alpha composite new tile over existing tile and re-encode.
+	
+	Args:
+	z: z.
+	x: x.
+	y: y.
+	new_data: new_data.
+	old_data: old_data.
+	save_args: save_args.
+	Returns:
+	tuple.
+	"""
 	z, x, y, new_data, old_data, save_args = args
 
 	out = io.BytesIO()
@@ -228,6 +398,18 @@ def composite_tile(args):
 
 
 def build_parent_tile(args):
+	"""
+	Build a parent tile from child tiles when generating overviews.
+	
+	Args:
+	p_z: p_z.
+	p_x: p_x.
+	p_y: p_y.
+	childrens: childrens.
+	build_args: build_args.
+	Returns:
+	tuple.
+	"""
 	p_z, p_x, p_y, childrens, build_args = args
 
 	min_c_x = p_x * 2
@@ -253,6 +435,18 @@ def build_parent_tile(args):
 
 
 def hash_tile(args):
+	"""
+	Compute MD5 hash and timestamp for tile row.
+	
+	Args:
+	z: z.
+	x: x.
+	y: y.
+	tile_data: tile_data.
+	created: created.
+	Returns:
+	tuple.
+	"""
 	z, x, y, tile_data, created = args
 
 	return hashlib.md5(tile_data).hexdigest(), created, z, x, y
@@ -260,6 +454,15 @@ def hash_tile(args):
 
 # ========= MBTILES =========
 def get_mbtiles_metadata(cur, name):
+	"""
+	Get metadata entry by name from metadata table.
+	
+	Args:
+	cur: cur.
+	name: name.
+	Returns:
+	str or None.
+	"""
 	if name is not None:
 		cur.execute("SELECT name, value FROM metadata WHERE name = ?;", (name,))
 		row = cur.fetchone()
@@ -268,6 +471,14 @@ def get_mbtiles_metadata(cur, name):
 
 
 def get_mbtiles_metadatas(cur):
+	"""
+	Fetch all metadata entries as dictionary.
+	
+	Args:
+	cur: cur.
+	Returns:
+	dict.
+	"""
 	cur.execute("SELECT name, value FROM metadata;")
 	rows = cur.fetchall()
 	if rows:
@@ -275,6 +486,15 @@ def get_mbtiles_metadatas(cur):
 
 
 def get_mbtiles_bounds_from_tiles(cur, scheme="tms"):
+	"""
+	Compute bounds from tiles table using max zoom data.
+	
+	Args:
+	cur: cur.
+	scheme: scheme.
+	Returns:
+	list[float] or None.
+	"""
 	cur.execute("SELECT MAX(zoom_level) FROM tiles;")
 	row = cur.fetchone()
 	if not row:
@@ -287,7 +507,7 @@ def get_mbtiles_bounds_from_tiles(cur, scheme="tms"):
 	if not row:
 		return None
 
-	x_min, x_max, y_min, y_max = cur.fetchone()
+	x_min, x_max, y_min, y_max = row
 
 	bounds = get_bbox_from_tiles(x_min, y_min, x_max, y_max, maxzoom, scheme)
 
@@ -300,6 +520,15 @@ def get_mbtiles_bounds_from_tiles(cur, scheme="tms"):
 
 
 def get_mbtiles_zoom_level_from_tiles(cur, min):
+	"""
+	Get min or max zoom level existing in tiles table.
+	
+	Args:
+	cur: cur.
+	min: min.
+	Returns:
+	int or None.
+	"""
 	if min:
 		cur.execute("SELECT MIN (zoom_level) FROM tiles;")
 	else:
@@ -313,6 +542,14 @@ def get_mbtiles_zoom_level_from_tiles(cur, min):
 
 
 def get_mbtiles_format_from_tiles(cur):
+	"""
+	Detect tile format from first tile blob in the tiles table.
+	
+	Args:
+	cur: cur.
+	Returns:
+	str or None.
+	"""
 	cur.execute("SELECT tile_data FROM tiles LIMIT 1;")
 	row = cur.fetchone()
 	if not row:
@@ -328,7 +565,50 @@ def get_mbtiles_format_from_tiles(cur):
 		return "pbf"
 
 
+def merge_vector_tiles(src_data, dst_data):
+	"""
+	Merge Mapbox Vector Tile (MVT/pbf) payloads by concatenating features layer-wise.
+
+	Args:
+	src_data: bytes (source tile payload)
+	dst_data: bytes or None (destination tile payload)
+	Returns:
+	bytes merged tile payload.
+	"""
+	if mapbox_vector_tile is None:
+		raise ImportError("mapbox_vector_tile is required for vector merge; install with 'pip install mapbox-vector-tile'.")
+
+	src = mapbox_vector_tile.decode(src_data)
+	dst = mapbox_vector_tile.decode(dst_data) if dst_data else {}
+	merged = {}
+
+	for layer_name, layer in dst.items():
+		merged[layer_name] = list(layer.get("features", []))
+
+	for layer_name, layer in src.items():
+		if layer_name not in merged:
+			merged[layer_name] = []
+		merged[layer_name].extend(layer.get("features", []))
+
+	layer_entries = []
+	for layer_name, features in merged.items():
+		layer_entries.append({
+			"name": layer_name,
+			"features": features,
+		})
+
+	return mapbox_vector_tile.encode(layer_entries)
+
+
 def get_mbtiles_tile_size_from_tiles(cur):
+	"""
+	Detect tile pixel size from first tile image.
+	
+	Args:
+	cur: cur.
+	Returns:
+	int or None.
+	"""
 	cur.execute("SELECT tile_data FROM tiles LIMIT 1;")
 	row = cur.fetchone()
 	if not row:
@@ -339,12 +619,23 @@ def get_mbtiles_tile_size_from_tiles(cur):
 
 # ======== CONNECT MBTILES =========
 def connect(file_path, ensure_schema = None):
+	"""
+	Open SQLite MBTiles database and optionally ensure schema exists.
+	
+	Args:
+	file_path: file_path.
+	ensure_schema: ensure_schema.
+	Returns:
+	tuple(sqlite3.Connection, sqlite3.Cursor).
+	"""
 	conn = sqlite3.connect(file_path)
 	cur = conn.cursor()
 
 	cur.execute("PRAGMA page_size = 65536;")
 	cur.execute("PRAGMA synchronous = OFF;")
 	cur.execute("PRAGMA journal_mode = OFF;")
+	cur.execute("PRAGMA temp_store = MEMORY;")
+	cur.execute("PRAGMA locking_mode = EXCLUSIVE;")
 
 	if ensure_schema:
 		cur.execute("CREATE TABLE IF NOT EXISTS metadata (name TEXT NOT NULL, value TEXT NOT NULL, UNIQUE (name));")
@@ -355,6 +646,17 @@ def connect(file_path, ensure_schema = None):
 
 # ======== MOVE AND CONNECT MBTILES =========
 def move_and_connect(file_path, compression, workers, batch_size):
+	"""
+	Recreate MBTiles with optional compression and attach new db connection.
+	
+	Args:
+	file_path: file_path.
+	compression: compression.
+	workers: workers.
+	batch_size: batch_size.
+	Returns:
+	tuple(sqlite3.Connection, sqlite3.Cursor).
+	"""
 	src_conn, src_cur = connect(file_path)
 
 	tile_format = get_mbtiles_metadata(src_cur, "format")
@@ -449,6 +751,16 @@ def move_and_connect(file_path, compression, workers, batch_size):
 
 # ======== CREATE MBTILES UNIQUE INDEXES =========
 def create_unique_indexes(cur, metadata_index, tiles_index):
+	"""
+	Create unique indexes on metadata and tiles tables as requested.
+	
+	Args:
+	cur: cur.
+	metadata_index: metadata_index.
+	tiles_index: tiles_index.
+	Returns:
+	None.
+	"""
 	def has_unique_index(table_name, column_names):
 		cur.execute(f"PRAGMA index_list ({table_name});")
 		indexes = cur.fetchall()
@@ -479,6 +791,22 @@ def create_unique_indexes(cur, metadata_index, tiles_index):
 
 # ========= MERGE MBTILESES =========
 def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers, batch_size, metadata_json):
+	"""
+	Merge input MBTiles into destination using strategy and filters.
+	
+	Args:
+	conn: conn.
+	cur: cur.
+	inputs: inputs.
+	merge_strategy: merge_strategy.
+	merge_delete: merge_delete.
+	compression: compression.
+	workers: workers.
+	batch_size: batch_size.
+	metadata_json: metadata_json.
+	Returns:
+	list or None.
+	"""
 	final_bounds = None
 	limit_bounds = None
 	tile_format = "png"
@@ -495,19 +823,16 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 			scheme = metadata_json["scheme"]
 
 	insert_query = None
-	select_query = None
+	base_select_query = None
 	if merge_strategy == "overwrite":
 		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+		base_select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ?"
 	elif merge_strategy == "keep":
 		insert_query = "INSERT OR IGNORE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+		base_select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data FROM src.tiles src WHERE src.rowid > ?"
 	else:
-		if tile_format == "pbf":
-			raise ValueError(f"Strategy '{merge_strategy}' is not support with format '{tile_format}'")
-
 		insert_query = "INSERT OR REPLACE INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?, ?, ?, ?);"
-		select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ? ORDER BY src.rowid LIMIT ?;"
+		base_select_query = "SELECT src.rowid, src.zoom_level, src.tile_column, src.tile_row, src.tile_data AS new_data, dst.tile_data AS old_data FROM src.tiles src LEFT JOIN tiles dst ON dst.zoom_level = src.zoom_level AND dst.tile_column = src.tile_column AND dst.tile_row = src.tile_row WHERE src.rowid > ?"
 
 	save_args = {
 		"format": tile_format.upper(),
@@ -527,10 +852,14 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 	pool = Pool(workers) if workers > 1 else None
 
 	try:
-		for idx, path in enumerate(inputs):
+		for idx, entry in enumerate(inputs):
 			last_rowid = 0
 
-			LOGGER.info(f"Merging with MBTiles '{path}' - {idx + 1}...")
+			path = entry["path"]
+			src_minzoom = entry["minzoom"]
+			src_maxzoom = entry["maxzoom"]
+
+			LOGGER.info(f"Merging with MBTiles '{path}' - {idx + 1}... (zoom range {src_minzoom or 'auto'}..{src_maxzoom or 'auto'})")
 
 			src_conn = sqlite3.connect(path, False)
 			src_cur = src_conn.cursor()
@@ -541,15 +870,15 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 			else:
 				src_bounds = get_mbtiles_bounds_from_tiles(src_cur, scheme)
 
-				if limit_bounds and get_intersect_bbox(limit_bounds, src_bounds) is None:
-					LOGGER.warning(f"Skipping outside MBTiles '{path}' - {idx + 1}...")
+			if limit_bounds and src_bounds and get_intersect_bbox(limit_bounds, src_bounds) is None:
+				LOGGER.warning(f"Skipping outside MBTiles '{path}' - {idx + 1}...")
 
-					src_conn.close()
+				src_conn.close()
 
-					if merge_delete:
-						path.unlink(missing_ok=True)
+				if merge_delete:
+					path.unlink(missing_ok=True)
 
-					continue
+				continue
 
 			src_conn.close()
 
@@ -559,48 +888,52 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 
 			conn.execute("BEGIN;")
 
-			if merge_strategy == "overwrite" or merge_strategy == "keep":
-				if tile_format == "pbf":
-					while True:
-						cur.execute(select_query, (last_rowid, batch_size))
-						rows = cur.fetchall()
-						if not rows:
-							break
+			# Build select query for this source with optional zoom filtering
+			select_query = base_select_query
 
+			if src_minzoom is not None:
+				select_query += " AND src.zoom_level >= ?"
+			if src_maxzoom is not None:
+				select_query += " AND src.zoom_level <= ?"
+			select_query += " ORDER BY src.rowid LIMIT ?;"
+
+			while True:
+				params = [last_rowid]
+				if src_minzoom is not None:
+					params.append(src_minzoom)
+				if src_maxzoom is not None:
+					params.append(src_maxzoom)
+				params.append(batch_size)
+
+				cur.execute(select_query, tuple(params))
+				rows = cur.fetchall()
+				if not rows:
+					break
+
+				if merge_strategy == "overwrite" or merge_strategy == "keep":
+					if tile_format == "pbf":
 						for _, z, x, y, tile_data in rows:
 							cur.execute(insert_query, (z, x, y, tile_data))
-
-						last_rowid = rows[-1][0]
-				else:
-					while True:
-						cur.execute(select_query, (last_rowid, batch_size))
-						rows = cur.fetchall()
-						if not rows:
-							break
-
+					else:
 						if pool:
 							for data in pool.imap_unordered(process_tile, [(z, x, y, tile_data, save_args) for _, z, x, y, tile_data in rows]):
 								cur.execute(insert_query, data)
 						else:
 							for _, z, x, y, tile_data in rows:
 								cur.execute(insert_query, process_tile((z, x, y, tile_data, save_args)))
-
-						last_rowid = rows[-1][0]
-			else:
-				while True:
-					cur.execute(select_query, (last_rowid, batch_size))
-					rows = cur.fetchall()
-					if not rows:
-						break
-
-					if pool:
-						for data in pool.imap_unordered(composite_tile, [(z, x, y, new_data, old_data, save_args) for _, z, x, y, new_data, old_data in rows]):
-							cur.execute(insert_query, data)
-					else:
+				else:
+					if tile_format == "pbf":
 						for _, z, x, y, new_data, old_data in rows:
-							cur.execute(insert_query, composite_tile((z, x, y, new_data, old_data, save_args)))
+							cur.execute(insert_query, (z, x, y, merge_vector_tiles(new_data, old_data)))
+					else:
+						if pool:
+							for data in pool.imap_unordered(composite_tile, [(z, x, y, new_data, old_data, save_args) for _, z, x, y, new_data, old_data in rows]):
+								cur.execute(insert_query, data)
+						else:
+							for _, z, x, y, new_data, old_data in rows:
+								cur.execute(insert_query, composite_tile((z, x, y, new_data, old_data, save_args)))
 
-					last_rowid = rows[-1][0]
+				last_rowid = rows[-1][0]
 
 			conn.execute("COMMIT;")
 
@@ -618,6 +951,17 @@ def merge(conn, cur, inputs, merge_strategy, merge_delete, compression, workers,
 
 # ========= UPDATE MBTILES METADATA =========
 def update_metadata(conn, cur, metadata_json, merge_bounds):
+	"""
+	Update metadata table after merge and overview operations.
+	
+	Args:
+	conn: conn.
+	cur: cur.
+	metadata_json: metadata_json.
+	merge_bounds: merge_bounds.
+	Returns:
+	None.
+	"""
 	final_metadata = {}
 
 	origin_metadatas = get_mbtiles_metadatas(cur)
@@ -692,6 +1036,20 @@ def update_metadata(conn, cur, metadata_json, merge_bounds):
 
 # ========= CREATE MBTILES OVERVIEW =========
 def create_overview(conn, cur, resampling, compression, workers, batch_size, metadata_json):
+	"""
+	Generate overview zoom levels by downsampling tile pyramid.
+	
+	Args:
+	conn: conn.
+	cur: cur.
+	resampling: resampling.
+	compression: compression.
+	workers: workers.
+	batch_size: batch_size.
+	metadata_json: metadata_json.
+	Returns:
+	None.
+	"""
 	tile_format = "png"
 	tile_size = 256
 	scheme = "tms"
@@ -808,6 +1166,16 @@ def create_overview(conn, cur, resampling, compression, workers, batch_size, met
 
 # ========= UPDATE MBTILES EXTRA INFO (HASH AND CREATED) =========
 def update_hash_and_created(conn, cur, batch_size):
+	"""
+	Add hash and created metadata columns to tiles and populate them.
+	
+	Args:
+	conn: conn.
+	cur: cur.
+	batch_size: batch_size.
+	Returns:
+	None.
+	"""
 	def has_column(column):
 		cur.execute("PRAGMA table_info (tiles);")
 		rows = cur.fetchall()
@@ -891,10 +1259,11 @@ if __name__ == "__main__":
 		if not isinstance(metadata_json, dict):
 			raise ValueError("Metadata JSON must be an object")
 
-	# Parse and validate input MBTiles file paths
-	inputs = []
+	# Parse and validate input MBTiles file paths / JSON descriptors
+	input_entries = []
 	if args.inputs:
-		inputs = args.inputs
+		for input_path in args.inputs:
+			input_entries.append({"path": Path(input_path), "minzoom": None, "maxzoom": None})
 	elif args.inputs_list:
 		if not args.inputs_list.exists():
 			raise FileNotFoundError(f"Input MBTiles files list not found '{args.inputs_list}'")
@@ -903,11 +1272,47 @@ if __name__ == "__main__":
 			for line in f:
 				line = line.strip()
 				if line:
-					inputs.append(Path(line))
+					input_entries.append({"path": Path(line), "minzoom": None, "maxzoom": None})
+	elif args.inputs_json or args.inputs_json_file:
+		json_data = None
+		if args.inputs_json_file:
+			if not args.inputs_json_file.exists():
+				raise FileNotFoundError(f"Input MBTiles JSON file not found '{args.inputs_json_file}'")
+			with open(args.inputs_json_file, "r", encoding="utf-8") as f:
+				json_data = json.load(f)
+		else:
+			try:
+				json_data = json.loads(args.inputs_json)
+			except Exception as e:
+				raise ValueError(f"Invalid Inputs JSON string {e}")
 
-	for input in inputs:
-		if not input.exists():
-			raise FileNotFoundError(f"Input MBTiles file not found '{input}'")
+		if not isinstance(json_data, list):
+			raise ValueError("Inputs JSON must be a list of objects")
+
+		for item in json_data:
+			if not isinstance(item, dict) or "path" not in item:
+				raise ValueError("Each item in Inputs JSON must be an object with at least 'path'")
+
+			path = Path(item.get("path"))
+			minzoom = item.get("minzoom")
+			maxzoom = item.get("maxzoom")
+			if minzoom is not None:
+				minzoom = int(minzoom)
+			if maxzoom is not None:
+				maxzoom = int(maxzoom)
+			if minzoom is not None and maxzoom is not None and minzoom > maxzoom:
+				raise ValueError(f"Input entry '{path}' has minzoom > maxzoom")
+
+			input_entries.append({"path": path, "minzoom": minzoom, "maxzoom": maxzoom})
+
+	for entry in input_entries:
+		entry_path = entry["path"]
+		if not isinstance(entry_path, Path):
+			entry_path = Path(entry_path)
+		entry_path = entry_path.expanduser().resolve()
+		entry["path"] = entry_path
+		if not entry_path.exists():
+			raise FileNotFoundError(f"Input MBTiles file not found '{entry_path}'")
 
 	# Parse resampling
 	resampling = Image.LANCZOS
@@ -949,12 +1354,12 @@ if __name__ == "__main__":
 		create_unique_indexes(cur, args.metadata_index, args.tiles_index)
 
 	merge_bounds = None
-	if inputs:
+	if input_entries:
 		LOGGER.info(f"Merging MBTiles '{args.output}'...")
 
 		t2 = time.time()
 
-		merge_bounds = merge(conn, cur, inputs, args.merge_strategy, args.merge_delete, args.compression, workers, args.batch_size, metadata_json)
+		merge_bounds = merge(conn, cur, input_entries, args.merge_strategy, args.merge_delete, args.compression, workers, args.batch_size, metadata_json)
 
 		LOGGER.info(f"Merged MBTiles '{args.output}' in {time.time() - t2:.2f}s!")
 
