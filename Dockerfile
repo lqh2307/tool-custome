@@ -133,7 +133,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		osmosis \
 		libcurl4 \
 		libpython3.12 \
-		libgeos-3.12.1 \
+		libgeos3.12.1 \
 		libgeos-c1v5 \
 		libproj25 \
 		librasterlite2-1 \
