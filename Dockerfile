@@ -69,6 +69,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libtiff-dev \
 		libexpat-dev \
 		libxerces-c-dev \
+		libnetcdf-dev \
+		libpoppler-dev \
+		libpoppler-private-dev \
 		libzstd-dev \
 		libpq-dev \
 		libopenjp2-7-dev \
@@ -147,6 +150,10 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		liblz4-1 \
 		libexpat1 \
 		libxerces-c3.2 \
+		libnetcdf-c++4-1 \
+		netcdf-bin \
+		libpoppler134 \
+		poppler-utils \
 		libzstd1 \
 		libpq5 \
 		libopenjp2-7 \
