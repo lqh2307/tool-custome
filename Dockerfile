@@ -87,6 +87,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libblosc-dev \
 		libbrotli-dev \
 		libarchive-dev \
+		libaec-dev \
 		liblzma-dev \
 		libfreexl-dev \
 		openjdk-21-jdk \
@@ -118,6 +119,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get install -y \
 		python3 \
 		python3-pip \
+		python3-venv \
 		python3-numpy \
 		python3-jsonschema \
 		liblua5.4-0 \
@@ -129,13 +131,14 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libboost-system1.83.0 \
 		zlib1g \
 		osmosis \
-		libcurl4t64 \
+		libcurl4 \
 		libpython3.12 \
-		libgeos-c1t64 \
+		libgeos-3.12.1 \
+		libgeos-c1v5 \
 		libproj25 \
 		librasterlite2-1 \
 		libspatialite8 \
-		libpng16-16t64 \
+		libpng16-16 \
 		libjpeg-turbo8 \
 		libgif7 \
 		libwebp7 \
@@ -154,13 +157,19 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libxml2 \
 		libcairo2 \
 		libpcre3 \
-		libkmlbase1t64 \
+		libkmlbase1 \
+		libkmlconvenience1 \
+		libkmldom1 \
+		libkmlengine1 \
+		libkmlregionator1 \
+		libkmlxsd1 \
 		libheif1 \
 		libavif16 \
 		libdeflate0 \
-		libblosc2-2t64 \
+		libblosc1 \
 		libbrotli1 \
-		libarchive13t64 \
+		libarchive13 \
+		libaec0 \
 		liblzma5 \
 		libfreexl1 \
 		openjdk-21-jre \
@@ -173,7 +182,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		zstd \
 		p7zip-full \
 		rar \
-	&& python3 -m pip install --no-cache-dir Pillow rasterio mapbox-vector-tile \
+	&& python3 -m venv ${PREFIX_DIR}/venv \
+	&& ${PREFIX_DIR}/venv/bin/pip install --no-cache-dir Pillow rasterio mapbox-vector-tile \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/* \
@@ -183,7 +193,7 @@ COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=/root/.local/bin:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/scripts:${PATH}
+ENV PATH=${PREFIX_DIR}/venv/bin:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/scripts:${PATH}
 ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib
 ENV PYTHONPATH=${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages
 
