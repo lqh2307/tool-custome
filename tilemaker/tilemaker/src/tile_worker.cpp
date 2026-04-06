@@ -4,6 +4,7 @@
 #include <boost/filesystem.hpp>
 #include <vtzero/builder.hpp>
 #include <signal.h>
+#include <unordered_set>
 #include "helpers.h"
 #include "visvalingam.h"
 using namespace std;
@@ -507,6 +508,22 @@ void outputProc(
 		sharedData.mbtiles.readTileAndUncompress(rawExistingTile, zoom, bbox.index.x, bbox.index.y, sharedData.config.compress, sharedData.config.gzip);
 	}
 	vtzero::vector_tile existingTile{rawExistingTile};
+
+	// // If merge is enabled, keep all existing layers that are not part of the current config.
+	// if (sharedData.mergeSqlite && !existingTile.empty()) {
+	// 	std::unordered_set<std::string> configuredLayers;
+	// 	for (auto lt : sharedData.layers.layerOrder) {
+	// 		configuredLayers.insert(sharedData.layers.layers[lt].name);
+	// 	}
+
+	// 	existingTile.for_each_layer([&](vtzero::layer &&layer) {
+	// 		std::string name{layer.name().data(), layer.name().size()};
+	// 		if (configuredLayers.find(name) == configuredLayers.end()) {
+	// 			tile.add_existing_layer(layer);
+	// 		}
+	// 		return true;
+	// 	});
+	// }
 
 	// Loop through layers
 #ifndef _WIN32
