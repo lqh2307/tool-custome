@@ -74,6 +74,9 @@ struct GDALVectorInfoOptions
 
     // Select the OGR_SCHEMA export
     bool bExportOgrSchema = false;
+
+    /*! Only used whenbIsCli is true */
+    std::string osCRSFormat{"AUTO"};
 };
 
 /************************************************************************/
@@ -951,45 +954,68 @@ static void ReportOnLayer(CPLString &osRet, CPLJSONObject &oLayer,
                     {
                         CPLJSONObject oCRS;
                         oGeometryField.Add("coordinateSystem", oCRS);
-                        char *pszWKT = nullptr;
-                        poSRS->exportToWkt(&pszWKT, apszWKTOptions);
-                        if (pszWKT)
-                        {
-                            oCRS.Set("wkt", pszWKT);
-                            CPLFree(pszWKT);
-                        }
 
+                        // When exporting the schema give priority
+                        // to the compact <authority:code> form
+                        bool authIdSet{false};
+                        if (psOptions->bExportOgrSchema)
                         {
-                            char *pszProjJson = nullptr;
-                            // PROJJSON requires PROJ >= 6.2
-                            CPLErrorStateBackuper oCPLErrorHandlerPusher(
-                                CPLQuietErrorHandler);
-                            CPL_IGNORE_RET_VAL(
-                                poSRS->exportToPROJJSON(&pszProjJson, nullptr));
-                            if (pszProjJson)
+                            const char *pszAuthCode =
+                                poSRS->GetAuthorityCode(nullptr);
+                            const char *pszAuthName =
+                                poSRS->GetAuthorityName(nullptr);
+                            if (pszAuthName && pszAuthCode)
                             {
-                                CPLJSONDocument oDoc;
-                                if (oDoc.LoadMemory(pszProjJson))
-                                {
-                                    oCRS.Add("projjson", oDoc.GetRoot());
-                                }
-                                CPLFree(pszProjJson);
+                                std::string oSRS{pszAuthName};
+                                oSRS += ':';
+                                oSRS += pszAuthCode;
+                                oCRS.Set("authid", oSRS);
+                                authIdSet = true;
                             }
                         }
 
-                        const auto &anAxes =
-                            poSRS->GetDataAxisToSRSAxisMapping();
-                        CPLJSONArray oAxisMapping;
-                        for (const auto nAxis : anAxes)
+                        if (!authIdSet)
                         {
-                            oAxisMapping.Add(nAxis);
-                        }
-                        oCRS.Add("dataAxisToSRSAxisMapping", oAxisMapping);
+                            char *pszWKT = nullptr;
+                            poSRS->exportToWkt(&pszWKT, apszWKTOptions);
+                            if (pszWKT)
+                            {
+                                oCRS.Set("wkt", pszWKT);
+                                CPLFree(pszWKT);
+                            }
 
-                        const double dfCoordinateEpoch =
-                            poSRS->GetCoordinateEpoch();
-                        if (dfCoordinateEpoch > 0)
-                            oCRS.Set("coordinateEpoch", dfCoordinateEpoch);
+                            {
+                                char *pszProjJson = nullptr;
+                                // PROJJSON requires PROJ >= 6.2
+                                CPLErrorStateBackuper oCPLErrorHandlerPusher(
+                                    CPLQuietErrorHandler);
+                                CPL_IGNORE_RET_VAL(poSRS->exportToPROJJSON(
+                                    &pszProjJson, nullptr));
+                                if (pszProjJson)
+                                {
+                                    CPLJSONDocument oDoc;
+                                    if (oDoc.LoadMemory(pszProjJson))
+                                    {
+                                        oCRS.Add("projjson", oDoc.GetRoot());
+                                    }
+                                    CPLFree(pszProjJson);
+                                }
+                            }
+
+                            const auto &anAxes =
+                                poSRS->GetDataAxisToSRSAxisMapping();
+                            CPLJSONArray oAxisMapping;
+                            for (const auto nAxis : anAxes)
+                            {
+                                oAxisMapping.Add(nAxis);
+                            }
+                            oCRS.Add("dataAxisToSRSAxisMapping", oAxisMapping);
+
+                            const double dfCoordinateEpoch =
+                                poSRS->GetCoordinateEpoch();
+                            if (dfCoordinateEpoch > 0)
+                                oCRS.Set("coordinateEpoch", dfCoordinateEpoch);
+                        }
                     }
                     else
                     {
@@ -1186,7 +1212,7 @@ static void ReportOnLayer(CPLString &osRet, CPLJSONObject &oLayer,
             }
         }
 
-        const auto displayExtraInfoSRS =
+        const auto DisplayExtraInfoSRS =
             [&osRet, &psOptions](const OGRSpatialReference *poSRS)
         {
             const double dfCoordinateEpoch = poSRS->GetCoordinateEpoch();
@@ -1217,6 +1243,68 @@ static void ReportOnLayer(CPLString &osRet, CPLJSONObject &oLayer,
                 Concat(osRet, psOptions->bStdoutOutput, "%d", mapping[i]);
             }
             Concat(osRet, psOptions->bStdoutOutput, "\n");
+        };
+
+        const auto DisplaySRS =
+            [&osRet, &psOptions, apszWKTOptions,
+             DisplayExtraInfoSRS](const OGRSpatialReference *poSRS,
+                                  const OGRGeomFieldDefn *poGFldDefn)
+        {
+            std::string osWkt;
+            if (poSRS)
+                osWkt = poSRS->exportToWkt(apszWKTOptions);
+
+            if (psOptions->bIsCli && !poSRS)
+            {
+                if (poGFldDefn)
+                    Concat(osRet, psOptions->bStdoutOutput,
+                           "Coordinate Reference System of field %s: none\n",
+                           poGFldDefn->GetNameRef());
+                else
+                    Concat(osRet, psOptions->bStdoutOutput,
+                           "Layer Coordinate Reference System: none\n");
+            }
+            else if (psOptions->bIsCli)
+            {
+                std::string osIntroText;
+                if (poGFldDefn)
+                {
+                    osIntroText =
+                        std::string("Coordinate Reference System of field ")
+                            .append(poGFldDefn->GetNameRef());
+                }
+                else
+                {
+                    osIntroText = "Layer Coordinate Reference System";
+                }
+
+                EmitTextDisplayOfCRS(poSRS, psOptions->osCRSFormat, osIntroText,
+                                     [&osRet, psOptions](const std::string &s)
+                                     {
+                                         Concat(osRet, psOptions->bStdoutOutput,
+                                                "%s", s.c_str());
+                                     });
+            }
+            else
+            {
+                if (osWkt.empty())
+                    osWkt = "(unknown)";
+
+                if (poGFldDefn)
+                {
+                    Concat(osRet, psOptions->bStdoutOutput,
+                           "SRS WKT (%s):\n%s\n", poGFldDefn->GetNameRef(),
+                           osWkt.c_str());
+                }
+                else
+                {
+                    Concat(osRet, psOptions->bStdoutOutput,
+                           "Layer SRS WKT:\n%s\n", osWkt.c_str());
+                }
+            }
+
+            if (poSRS)
+                DisplayExtraInfoSRS(poSRS);
         };
 
         const auto DisplaySupportedCRSList = [&](int iGeomField)
@@ -1255,49 +1343,17 @@ static void ReportOnLayer(CPLString &osRet, CPLJSONObject &oLayer,
 
             for (int iGeom = 0; iGeom < nGeomFieldCount; iGeom++)
             {
-                OGRGeomFieldDefn *poGFldDefn =
+                const OGRGeomFieldDefn *poGFldDefn =
                     poLayer->GetLayerDefn()->GetGeomFieldDefn(iGeom);
                 const OGRSpatialReference *poSRS = poGFldDefn->GetSpatialRef();
-                char *pszWKT = nullptr;
-                if (poSRS == nullptr)
-                {
-                    pszWKT = CPLStrdup("(unknown)");
-                }
-                else
-                {
-                    poSRS->exportToWkt(&pszWKT, apszWKTOptions);
-                }
-
-                Concat(osRet, psOptions->bStdoutOutput, "SRS WKT (%s):\n%s\n",
-                       poGFldDefn->GetNameRef(), pszWKT);
-                CPLFree(pszWKT);
-                if (poSRS)
-                {
-                    displayExtraInfoSRS(poSRS);
-                }
+                DisplaySRS(poSRS, poGFldDefn);
                 DisplaySupportedCRSList(iGeom);
             }
         }
         else if (!bJson)
         {
-            char *pszWKT = nullptr;
-            auto poSRS = poLayer->GetSpatialRef();
-            if (poSRS == nullptr)
-            {
-                pszWKT = CPLStrdup("(unknown)");
-            }
-            else
-            {
-                poSRS->exportToWkt(&pszWKT, apszWKTOptions);
-            }
-
-            Concat(osRet, psOptions->bStdoutOutput, "Layer SRS WKT:\n%s\n",
-                   pszWKT);
-            CPLFree(pszWKT);
-            if (poSRS)
-            {
-                displayExtraInfoSRS(poSRS);
-            }
+            const auto poSRS = poLayer->GetSpatialRef();
+            DisplaySRS(poSRS, nullptr);
             DisplaySupportedCRSList(0);
         }
 
@@ -2113,6 +2169,15 @@ char *GDALVectorInfo(GDALDatasetH hDataset,
             }
             else if (CPLGetLastErrorType() != CE_None)
             {
+                // sqlite3 emits messages with "readonly" and GDAL with "read-only"
+                if (psOptions->bIsCli &&
+                    (strstr(CPLGetLastErrorMsg(), "readonly") ||
+                     strstr(CPLGetLastErrorMsg(), "read-only")))
+                {
+                    CPLError(CE_Warning, CPLE_AppDefined,
+                             "Perhaps you want to run \"gdal vector sql "
+                             "--update\" instead?");
+                }
                 return nullptr;
             }
         }
@@ -2500,6 +2565,12 @@ static std::unique_ptr<GDALArgumentParser> GDALVectorInfoOptionsGetParser(
         .store_into(psOptions->bIsCli)
         .help(_("Indicates that this is called from the gdal vector info CLI "
                 "utility."));
+
+    // Hidden: only for gdal vector info
+    argParser->add_argument("--crs-format")
+        .choices("AUTO", "WKT2", "PROJJSON")
+        .store_into(psOptions->osCRSFormat)
+        .hidden();
 
     auto &argFilename = argParser->add_argument("filename")
                             .action(

@@ -559,22 +559,36 @@ class CPL_DLL OGRFeatureDefn
         {
           private:
             OwnerT m_poFDefn;
+            const int m_nFieldCount;
             int m_nIdx;
+            ChildT m_curValue{};
 
           public:
             inline Iterator(OwnerT poFDefn, int nIdx)
-                : m_poFDefn(poFDefn), m_nIdx(nIdx)
+                : m_poFDefn(poFDefn), m_nFieldCount(poFDefn->GetFieldCount()),
+                  m_nIdx(nIdx)
             {
+                if (m_nIdx < m_nFieldCount)
+                    m_curValue = m_poFDefn->GetFieldDefn(m_nIdx);
             }
 
-            inline ChildT operator*() const
+            inline const ChildT &operator*() const
             {
-                return m_poFDefn->GetFieldDefn(m_nIdx);
+                return m_curValue;
+            }
+
+            inline ChildT &operator*()
+            {
+                return m_curValue;
             }
 
             inline Iterator &operator++()
             {
                 m_nIdx++;
+                if (m_nIdx < m_nFieldCount)
+                    m_curValue = m_poFDefn->GetFieldDefn(m_nIdx);
+                else
+                    m_curValue = nullptr;
                 return *this;
             }
 
@@ -584,12 +598,12 @@ class CPL_DLL OGRFeatureDefn
             }
         };
 
-        inline Iterator begin()
+        inline Iterator begin() const
         {
             return Iterator(m_poFDefn, 0);
         }
 
-        inline Iterator end()
+        inline Iterator end() const
         {
             return Iterator(m_poFDefn, m_poFDefn->GetFieldCount());
         }
@@ -813,6 +827,28 @@ class CPL_DLL OGRFeatureDefn
 
     virtual OGRFeatureDefn *Clone() const;
 
+#ifdef DEPRECATE_OGRFEATUREDEFN_REF_COUNTING
+    int Reference()
+        CPL_WARN_DEPRECATED("Use OGRFeatureDefnRefCountedPtr instead")
+    {
+        return CPLAtomicInc(&nRefCount);
+    }
+
+    int Dereference()
+        CPL_WARN_DEPRECATED("Use OGRFeatureDefnRefCountedPtr instead")
+    {
+        return CPLAtomicDec(&nRefCount);
+    }
+
+    int GetReferenceCount() const
+        CPL_WARN_DEPRECATED("Use OGRFeatureDefnRefCountedPtr instead")
+    {
+        return nRefCount;
+    }
+
+    void Release()
+        CPL_WARN_DEPRECATED("Use OGRFeatureDefnRefCountedPtr instead");
+#else
     int Reference()
     {
         return CPLAtomicInc(&nRefCount);
@@ -832,6 +868,7 @@ class CPL_DLL OGRFeatureDefn
     }
 
     void Release();
+#endif
 
     virtual int IsGeometryIgnored() const;
     virtual void SetGeometryIgnored(int bIgnore);
@@ -905,6 +942,51 @@ class CPL_DLL OGRFeatureDefn
   private:
     CPL_DISALLOW_COPY_ASSIGN(OGRFeatureDefn)
 };
+
+#ifdef GDAL_COMPILATION
+/*! @cond Doxygen_Suppress */
+
+#include "ogr_refcountedptr.h"
+
+template <>
+struct OGRRefCountedPtr<OGRFeatureDefn>
+    : public OGRRefCountedPtrBase<OGRFeatureDefn>
+{
+    /** Constructs from a raw OGRFeatureDefn instance.
+     */
+    inline explicit OGRRefCountedPtr(OGRFeatureDefn *poFDefn = nullptr,
+                                     bool add_ref = true)
+        : OGRRefCountedPtrBase<OGRFeatureDefn>(poFDefn, add_ref)
+    {
+    }
+
+    /** Constructs with a null OGRFeatureDefn instance.
+     */
+    inline explicit OGRRefCountedPtr(std::nullptr_t)
+    {
+    }
+
+    /** Constructs with a new OGRFeatureDefn instance with the provided name
+     */
+    inline static OGRRefCountedPtr makeInstance(const char *pszName)
+    {
+        // Initial ref_count of OGRFeatureDefn is 0, so do add a ref
+        return OGRRefCountedPtr(new OGRFeatureDefn(pszName),
+                                /* add_ref = */ true);
+    }
+};
+
+/** Smart pointer around OGRFeatureDefn.
+ *
+ * It uses OGRFeatureDefn built-in reference counting, to increase the reference
+ * count when assigning a raw pointer to the smart pointer, and decrease it
+ * when releasing it.
+ * Somewhat similar to https://www.boost.org/doc/libs/latest/libs/smart_ptr/doc/html/smart_ptr.html#intrusive_ptr
+ */
+using OGRFeatureDefnRefCountedPtr = OGRRefCountedPtr<OGRFeatureDefn>;
+
+/*! @endcond */
+#endif
 
 #ifdef GDAL_COMPILATION
 /** Return an object that temporary unseals the OGRFeatureDefn

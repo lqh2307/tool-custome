@@ -3248,7 +3248,14 @@ def test_ogr_shape_73(tmp_vsimem):
     lyr = ds.GetLayer(0)
     feat = lyr.GetNextFeature()
     got_geom = feat.GetGeometryRef()
-    assert geom.ExportToWkt() == got_geom.ExportToWkt()
+    if ogrtest.have_geos():
+        assert got_geom.ExportToWkt() in (
+            "POLYGON ((0 0,0 10,10 10,10 0,0 0),(4 3,5 1,4 2,4 3),(6 2,5 1,6 3,6 2))",
+            "POLYGON ((0 0,0 10,10 10,10 0,0 0),(5 1,4 2,4 3,5 1),(5 1,6 3,6 2,5 1))",  # GEOS 3.15
+        )
+        assert got_geom.IsValid()
+    else:
+        assert got_geom.ExportToWkt() == geom.ExportToWkt()
     ds = None
 
 
@@ -6251,10 +6258,15 @@ def test_ogr_shape_read_huge_multipolygon():
     start = time.time()
     f = lyr.GetNextFeature()
     end = time.time()
-    # This takes ~ 3 seconds on a release build on my machine.
-    assert end - start < 20
+    # This takes ~ 26 seconds with GEOS enabled and ~ 7 seconds without it,
+    # on a release build on my machine.
+    ellapsed_time = end - start
+    assert ellapsed_time < 90
     g = f.GetGeometryRef()
-    assert g.GetGeometryCount() == 161782
+    if ogrtest.have_geos():
+        assert g.GetGeometryCount() == 157284
+    else:
+        assert g.GetGeometryCount() == 161782
 
 
 ###############################################################################
@@ -6334,3 +6346,36 @@ def test_ogr_shape_read_shp_xml(tmp_vsimem):
         "/vsimem/test_ogr_shape_read_shp_xml/test.dbf",
         "/vsimem/test_ogr_shape_read_shp_xml/test.shp.xml",
     ]
+
+
+###############################################################################
+
+
+@gdaltest.enable_exceptions()
+def test_ogr_shape_inconsistent_record_count(tmp_vsimem):
+
+    with gdal.GetDriverByName("ESRI Shapefile").CreateVector(
+        tmp_vsimem / "tmp.shp"
+    ) as ds:
+        lyr = ds.CreateLayer("tmp")
+        f = ogr.Feature(lyr.GetLayerDefn())
+        f.SetGeometry(ogr.CreateGeometryFromWkt("POINT (1 2)"))
+        lyr.CreateFeature(f)
+        f = ogr.Feature(lyr.GetLayerDefn())
+        f.SetGeometry(ogr.CreateGeometryFromWkt("POINT (2 3)"))
+        lyr.CreateFeature(f)
+
+    with gdal.VSIFile(tmp_vsimem / "tmp.dbf", "rb+") as f:
+        f.seek(4)
+        f.write(b"\x01")
+
+    with gdaltest.error_raised(
+        gdal.CE_Warning, match="Inconsistent record number in .shx (2) and in .dbf (1)"
+    ):
+        ds = ogr.Open(tmp_vsimem / "tmp.shp")
+
+    lyr = ds.GetLayer(0)
+    # Current behaviour, but could as well be 1.
+    assert lyr.GetFeatureCount() == 2
+    lyr.GetNextFeature()
+    lyr.GetNextFeature()
