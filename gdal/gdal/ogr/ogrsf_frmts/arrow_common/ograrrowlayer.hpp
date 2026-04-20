@@ -1682,7 +1682,8 @@ static int GetListLength(const ArrowType *array, int64_t nIdxInArray)
     const auto nCount = array->value_length(nIdxInArray);
     if constexpr (!std::is_same_v<decltype(nCount), int>)
     {
-        if (nCount > INT_MAX)
+        // Should be >, but >= makes coverity scan happy
+        if (nCount >= INT_MAX)
         {
             CPLError(CE_Failure, CPLE_NotSupported,
                      "More than %d values in list. Clamping to it", INT_MAX);
@@ -5216,7 +5217,7 @@ inline OGRErr OGRArrowLayer::ISetSpatialFilter(int iGeomField,
             if (FastGetExtent(iGeomField, &sLayerExtent))
             {
                 m_bSpatialFilterIntersectsLayerExtent =
-                    m_sFilterEnvelope.Intersects(sLayerExtent);
+                    CPL_TO_BOOL(m_sFilterEnvelope.Intersects(sLayerExtent));
             }
         }
     }

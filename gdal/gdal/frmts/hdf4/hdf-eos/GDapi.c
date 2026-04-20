@@ -1753,8 +1753,12 @@ GDfieldinfo(int32 gridID, const char *fieldname, int32 * rank, int32 dims[],
 
 	    if (statmeta == 0)
 	    {
-		memmove(utlstr, utlstr + 1, strlen(utlstr) - 2);
-		utlstr[strlen(utlstr) - 2] = 0;
+		const size_t len = strlen(utlstr);
+		if (len >= 2 && utlstr[0] == '(' && utlstr[len-1] == ')')
+		{
+		    memmove(utlstr, utlstr + 1, len - 2);
+		    utlstr[len - 2] = '\0';
+		}
 
 		/* Parse trimmed DimList string and get rank */
 		ndims = EHparsestr(utlstr, ',', ptr, slen);
@@ -3147,7 +3151,10 @@ GDnentries(int32 gridID, int32 entrycode, int32 * strbufsize)
 		     * Get all string values Don't count quotes
 		     */
 		    EHgetmetavalue(metaptrs, &valName[i][0], utlstr);
-		    *strbufsize += (int32)strlen(utlstr) - 2;
+		    if( utlstr[0] == '"' && utlstr[strlen(utlstr)-1] == '"' )
+		        *strbufsize += (int32)strlen(utlstr) - 2;
+		    else
+		        *strbufsize += (int32)strlen(utlstr);
 		}
 		/* Increment number of entries */
 		nEntries++;

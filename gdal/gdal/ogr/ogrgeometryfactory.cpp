@@ -1951,7 +1951,8 @@ std::unique_ptr<OGRGeometry> OGRGeometryFactory::organizePolygons(
                         [&apoPolygons](const OGRCurvePolygon *poCurvePoly)
                     {
                         const bool bIsCurvePoly =
-                            wkbFlatten(poCurvePoly->getGeometryType());
+                            wkbFlatten(poCurvePoly->getGeometryType()) ==
+                            wkbCurvePolygon;
                         for (const auto *ring : poCurvePoly)
                         {
                             if (bIsCurvePoly)
@@ -3792,10 +3793,10 @@ static bool ContainsPole(const OGRGeometry *poGeom, const OGRPoint *poPole)
                 const auto poRing = poPoly->getExteriorRingCurve();
                 OGRPolygon oPolygon;
                 oPolygon.addRing(poRing);
-                return oPolygon.Contains(poPole);
+                return CPL_TO_BOOL(oPolygon.Contains(poPole));
             }
 
-            return poGeom->Contains(poPole);
+            return CPL_TO_BOOL(poGeom->Contains(poPole));
         }
 
         case wkbMultiPolygon:
@@ -3813,7 +3814,7 @@ static bool ContainsPole(const OGRGeometry *poGeom, const OGRPoint *poPole)
         default:
             break;
     }
-    return poGeom->Contains(poPole);
+    return CPL_TO_BOOL(poGeom->Contains(poPole));
 }
 
 /************************************************************************/

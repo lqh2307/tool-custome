@@ -810,7 +810,7 @@ def test_gdalalg_vector_pipeline_reproject_nominal(tmp_vsimem):
     )
 
     with gdal.OpenEx(out_filename) as ds:
-        assert ds.GetLayer(0).GetSpatialRef().GetAuthorityCode(None) == "4326"
+        assert ds.GetLayer(0).GetSpatialRef().GetAuthorityCode() == "4326"
         assert ds.GetLayer(0).GetFeatureCount() == 10
 
 
@@ -836,7 +836,7 @@ def test_gdalalg_vector_pipeline_reproject_with_src_crs(tmp_vsimem):
 
     with gdal.OpenEx(out_filename) as ds:
         lyr = ds.GetLayer(0)
-        assert lyr.GetSpatialRef().GetAuthorityCode(None) == "4326"
+        assert lyr.GetSpatialRef().GetAuthorityCode() == "4326"
         f = lyr.GetNextFeature()
         assert f.GetGeometryRef().GetEnvelope() == pytest.approx(
             (2.750130423614134, 2.759262932833617, 43.0361359661472, 43.0429263707128)
@@ -1068,3 +1068,15 @@ def test_gdalalg_vector_pipeline_no_create_empty_layers(tmp_vsimem):
         assert ds.GetLayerCount() == 1
         assert ds.GetLayer(0).GetName() == "poly_2"
         assert ds.GetLayer(0).GetFeatureCount() == 10
+
+
+# Test scenario of https://github.com/OSGeo/gdal/issues/14388
+def test_gdalalg_vector_pipeline_decorated_ds_take_ref(tmp_vsimem):
+
+    gdal.alg.vector.pipeline(
+        pipeline=f'read ../ogr/data/poly.shp ! rename-layer --output-layer layer ! sql --sql "SELECT * FROM layer LIMIT 1" ! write {tmp_vsimem}/out.shp'
+    )
+
+    ds = ogr.Open(f"{tmp_vsimem}/out.shp")
+    lyr = ds.GetLayer(0)
+    assert lyr.GetFeatureCount() == 1
