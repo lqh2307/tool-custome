@@ -825,14 +825,15 @@ bool GDALTileIndexDataset::Open(GDALOpenInfo *poOpenInfo)
             return false;
         }
 
-        if (!m_osBaseDir.empty() && CPLIsFilenameRelative(pszIndexDataset))
+        osIndexDataset = pszIndexDataset;
+        if (cpl::starts_with(osIndexDataset, GTI_PREFIX))
+            osIndexDataset = osIndexDataset.substr(strlen(GTI_PREFIX));
+
+        if (!m_osBaseDir.empty() &&
+            CPLIsFilenameRelative(osIndexDataset.c_str()))
         {
-            osIndexDataset = CPLFormFilenameSafe(m_osBaseDir.c_str(),
-                                                 pszIndexDataset, nullptr);
-        }
-        else
-        {
-            osIndexDataset = pszIndexDataset;
+            osIndexDataset = CPLFormFilenameSafe(
+                m_osBaseDir.c_str(), osIndexDataset.c_str(), nullptr);
         }
     }
 
@@ -5165,12 +5166,27 @@ CPLErr GDALTileIndexDataset::IRasterIO(
     if (nBufXSize < nXSize && nBufYSize < nYSize && AreOverviewsEnabled())
     {
         int bTried = FALSE;
-        const CPLErr eErr = TryOverviewRasterIO(
-            eRWFlag, nXOff, nYOff, nXSize, nYSize, pData, nBufXSize, nBufYSize,
-            eBufType, nBandCount, panBandMap, nPixelSpace, nLineSpace,
-            nBandSpace, psExtraArg, &bTried);
-        if (bTried)
-            return eErr;
+        if (nBandCount == 1 && panBandMap[0] == 0)
+        {
+            if (m_poMaskBand)
+            {
+                const CPLErr eErr = m_poMaskBand->TryOverviewRasterIO(
+                    eRWFlag, nXOff, nYOff, nXSize, nYSize, pData, nBufXSize,
+                    nBufYSize, eBufType, nPixelSpace, nLineSpace, psExtraArg,
+                    &bTried);
+                if (bTried)
+                    return eErr;
+            }
+        }
+        else
+        {
+            const CPLErr eErr = TryOverviewRasterIO(
+                eRWFlag, nXOff, nYOff, nXSize, nYSize, pData, nBufXSize,
+                nBufYSize, eBufType, nBandCount, panBandMap, nPixelSpace,
+                nLineSpace, nBandSpace, psExtraArg, &bTried);
+            if (bTried)
+                return eErr;
+        }
     }
 
     double dfXOff = nXOff;
