@@ -43,6 +43,12 @@ From GDAL 3.12 to GDAL 3.13
     ``char **`` to use ``CSLConstList`` instead. Such change is compatible with
     earlier GDAL versions.
 
+- GDAL CLI changes:
+
+  * Several command-line arguments in the unified GDAL CLI were renamed from a
+    --src/--dst pattern to an --input/--output pattern. The old argument names
+    are still accepted by command line tools, C, C++ and Python API.
+
 - Behavior changes:
 
   * RasterIO resampling/VRT: do it by default in the output buffer type
