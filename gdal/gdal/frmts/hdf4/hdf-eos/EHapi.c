@@ -623,7 +623,8 @@ EHgetversion(int32 fid, char *version)
     /* Get SDS interface ID */
     /* -------------------- */
     status = EHchkfid(fid, "EHgetversion", &dum, &sdInterfaceID, &access);
-
+    if (status < 0)
+        return -1;
 
     /* Get attribute index number */
     /* -------------------------- */
@@ -825,12 +826,14 @@ EHconvAng(float64 inAngle, intn code)
 |  END_PROLOG                                                                 |
 -----------------------------------------------------------------------------*/
 int32
-EHparsestr(const char *instring, const char delim, char *pntr[], int32 len[])
+EHparsestr(const char *instring, const char delim,
+           char *pntr[], size_t pntrsize,
+           int32 len[], size_t lensize)
 {
-    int32           i;		/* Loop index */
-    int32           prevDelimPos = 0;	/* Previous delimiter position */
-    int32           count;	/* Number of elements in string list */
-    int32           slen;	/* String length */
+    size_t           i;		/* Loop index */
+    size_t           prevDelimPos = 0;	/* Previous delimiter position */
+    size_t           count;	/* Number of elements in string list */
+    size_t           slen;	/* String length */
 
     char           *delimitor;	/* Pointer to delimiter */
 
@@ -847,7 +850,7 @@ EHparsestr(const char *instring, const char delim, char *pntr[], int32 len[])
 
     /* if string pointers are requested set first one to beginning of string */
     /* --------------------------------------------------------------------- */
-    if (&pntr[0] != NULL)
+    if (pntr != NULL && pntrsize)
     {
 	pntr[0] = (char *)instring;
     }
@@ -857,53 +860,59 @@ EHparsestr(const char *instring, const char delim, char *pntr[], int32 len[])
     {
 	/* if string length requested then set to input string length */
 	/* ---------------------------------------------------------- */
-	if (len != NULL)
+	if (len != NULL && lensize)
 	{
-	    len[0] = slen;
+	    len[0] = (int32)slen;
 	}
     } else
 	/* Delimiters Found */
 	/* ---------------- */
     {
-	/* Loop through all characters in string */
-	/* ------------------------------------- */
-	for (i = 1; i < slen; i++)
-	{
-	    /* If character is a delimiter ... */
-	    /* ------------------------------- */
-	    if (instring[i] == delim)
-	    {
+        /* Loop through all characters in string */
+        /* ------------------------------------- */
+        for (i = 1; i < slen; i++)
+        {
+            /* If character is a delimiter ... */
+            /* ------------------------------- */
+            if (instring[i] == delim)
+            {
 
-		/* If string pointer requested */
-		/* --------------------------- */
-		if (&pntr[0] != NULL)
-		{
-		    /* if requested then compute string length of entry */
-		    /* ------------------------------------------------ */
-		    if (len != NULL)
-		    {
-			len[count - 1] = i - prevDelimPos;
-		    }
-		    /* Point to beginning of string entry */
-		    /* ---------------------------------- */
-		    pntr[count] = (char *)instring + i + 1;
-		}
-		/* Reset previous delimiter position and increment counter */
-		/* ------------------------------------------------------- */
-		prevDelimPos = i + 1;
-		count++;
-	    }
-	}
+            /* If string pointer requested */
+            /* --------------------------- */
+            if (pntr != NULL)
+            {
+                /* if requested then compute string length of entry */
+                /* ------------------------------------------------ */
+                if (len != NULL)
+                {
+                    if (count - 1 >= lensize)
+                        return -1;
+                    len[count - 1] = (int32)(i - prevDelimPos);
+                }
+                /* Point to beginning of string entry */
+                /* ---------------------------------- */
+                if (count >= pntrsize)
+                    return -1;
+                pntr[count] = (char *)instring + i + 1;
+            }
+            /* Reset previous delimiter position and increment counter */
+            /* ------------------------------------------------------- */
+            prevDelimPos = i + 1;
+            count++;
+            }
+        }
 
-	/* Compute string length of last entry */
-	/* ----------------------------------- */
-	if (&pntr[0] != NULL && len != NULL)
-	{
-	    len[count - 1] = i - prevDelimPos;
-	}
+        /* Compute string length of last entry */
+        /* ----------------------------------- */
+        if (pntr != NULL && len != NULL)
+        {
+            if (count == 0 || (size_t)(count - 1) >= lensize)
+                return -1;
+            len[count - 1] = (int32)(i - prevDelimPos);
+        }
     }
 
-    return (count);
+    return (int32)(count);
 }
 
 
@@ -954,7 +963,7 @@ EHstrwithin(const char *target, const char *search, const char delim)
 
     /* Count number of entries in search string list */
     /* --------------------------------------------- */
-    nentries = EHparsestr(search, delim, NULL, NULL);
+    nentries = EHparsestr(search, delim, NULL, 0, NULL, 0);
     if (nentries == 0)
         return -1;
 
@@ -978,7 +987,14 @@ EHstrwithin(const char *target, const char *search, const char delim)
 
     /* Parse search string */
     /* ------------------- */
-    nentries = EHparsestr(search, delim, ptr, slen);
+    nentries = EHparsestr(search, delim, ptr, nentries, slen, nentries);
+    if (nentries < 0)
+    {
+        free(ptr);
+        free(slen);
+        HEpush(DFE_NOSPACE,"EHstrwithin", __FILE__, __LINE__);
+        return(-1);
+    }
 
 
     /* Loop through all elements in search string list */
@@ -1292,7 +1308,7 @@ EHrevflds(const char *dimlist, char *revdimlist)
 
     /* Count number of entries in search string list */
     /* --------------------------------------------- */
-    nentries = EHparsestr(tempdimlist, ',', NULL, NULL);
+    nentries = EHparsestr(tempdimlist, ',', NULL, 0, NULL, 0);
 
 
     /* Allocate string pointer and length arrays */
@@ -1316,8 +1332,15 @@ EHrevflds(const char *dimlist, char *revdimlist)
 
     /* Parse search string */
     /* ------------------- */
-    nentries = EHparsestr(tempdimlist, ',', ptr, slen);
-
+    nentries = EHparsestr(tempdimlist, ',', ptr, nentries, slen, nentries);
+    if (nentries < 0)
+    {
+        free(ptr);
+        free(slen);
+        free(tempdimlist);
+        HEpush(DFE_NOSPACE, "EHrevflds", __FILE__, __LINE__);
+        return(-1);
+    }
 
     /* Reverse entries in string pointer array */
     /* --------------------------------------- */
@@ -1484,7 +1507,6 @@ EHmetagroup(int32 sdInterfaceID, const char *structname, const char *structcode,
 
     int32           attrIndex;	/* Structural metadata attribute index */
     int32           nmeta;	/* Number of UTLSTRSIZE byte metadata sections */
-    int32           metalen;	/* Length of structural metadata */
 
     char           *metabuf;	/* Pointer (handle) to structural metadata */
     char           *endptr = NULL;	/* Pointer to end of metadata section */
@@ -1550,15 +1572,9 @@ EHmetagroup(int32 sdInterfaceID, const char *structname, const char *structcode,
     {
 	snprintf(utlstr, UTLSTR_MAX_SIZE, "%s%d", "StructMetadata.", i);
 	attrIndex = SDfindattr(sdInterfaceID, utlstr);
-	metalen = (int)strlen(metabuf);
+	int metalen = (int)strlen(metabuf);
 	SDreadattr(sdInterfaceID, attrIndex, metabuf + metalen);
     }
-
-    /* Determine length (# of characters) of metadata */
-    /* ---------------------------------------------- */
-    metalen = (int)strlen(metabuf);
-
-
 
     /* Find HDF-EOS structure "root" group in metadata */
     /* ----------------------------------------------- */
@@ -1608,7 +1624,7 @@ EHmetagroup(int32 sdInterfaceID, const char *structname, const char *structcode,
      * If not found then return to previous position in metadata and look for
      * "new-style" (ODL) metadata string
      */
-    if (metaptr == NULL)
+    if (metaptr == NULL && prevmetaptr)
     {
 	snprintf(utlstr, UTLSTR_MAX_SIZE, "%s%s", "GROUP=\"", structname);
 	metaptr = strstr(prevmetaptr, utlstr);
@@ -2133,8 +2149,10 @@ EHclose(int32 fid)
 	/* "Close" SD interface, Vgroup interface, and HDF file */
 	/* ---------------------------------------------------- */
 	status = SDend(sdInterfaceID);
-	status = Vend(HDFfid);
-	status = Hclose(HDFfid);
+	if (Vend(HDFfid) < 0)
+        status = -1;
+	if (Hclose(HDFfid) < 0)
+        status = -1;
 
 	/* Clear out external array entries */
 	/* -------------------------------- */

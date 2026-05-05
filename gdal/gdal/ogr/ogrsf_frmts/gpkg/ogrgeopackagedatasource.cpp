@@ -5646,6 +5646,13 @@ int GDALGeoPackageDataset::Create(const char *pszFilename, int nXSize,
         SQLCommand(hDB, "PRAGMA synchronous = OFF");
     }
 
+    // Enable SpatiaLite 4.3 GPKG mode, i.e. that SpatiaLite functions
+    // that take geometries will accept and return GPKG encoded geometries without
+    // explicit conversion.
+    // Note: we need to do that after DB creation, since EnableGpkgMode()
+    // checks for the presence of GPKG system tables.
+    sqlite3_exec(hDB, "SELECT EnableGpkgMode()", nullptr, nullptr, nullptr);
+
     return TRUE;
 }
 
