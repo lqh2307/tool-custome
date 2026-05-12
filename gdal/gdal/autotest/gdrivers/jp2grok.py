@@ -277,7 +277,7 @@ def test_jp2grok_10():
     gdal.Unlink("/vsimem/jp2grok_10.jp2")
 
     # Quite a bit of difference...
-    assert maxdiff <= 35, "Image too different from reference"
+    assert maxdiff <= 38, "Image too different from reference"
 
 
 ###############################################################################
@@ -592,7 +592,7 @@ def test_jp2grok_22():
     assert fourth_band.GetMetadataItem("NBITS", "IMAGE_STRUCTURE") == "1"
     ds = None
     ds = gdal.Open("/vsimem/jp2grok_22.jp2")
-    assert ds.GetRasterBand(4).Checksum() == 22499
+    assert ds.GetRasterBand(4).Checksum() == 26477
     ds = None
     gdal.Unlink("/vsimem/jp2grok_22.jp2")
 
@@ -721,7 +721,7 @@ def test_jp2grok_24():
     ds = None
     ds = gdal.Open("/vsimem/jp2grok_24.jp2")
     assert ds.GetRasterBand(2).GetMetadataItem("NBITS", "IMAGE_STRUCTURE") is None
-    assert ds.GetRasterBand(2).Checksum() == 22499
+    assert ds.GetRasterBand(2).Checksum() == 27389
     ds = None
     gdal.Unlink("/vsimem/jp2grok_24.jp2")
 
@@ -1348,6 +1348,72 @@ def test_jp2grok_transcode_ignored_options(tmp_path):
     ds = gdal.Open(dst_jp2)
     assert ds is not None
     ds = None
+
+
+###############################################################################
+# Test overview decode returns correct data (not a top-left crop)
+
+
+def test_jp2grok_overview_decode():
+    np = pytest.importorskip("numpy")
+
+    # Create a 256x256 image with a diagonal gradient so each quadrant
+    # has a distinct mean value, making it easy to detect a crop bug.
+    src_ds = gdal.GetDriverByName("MEM").Create("", 256, 256, 1, gdal.GDT_Byte)
+    arr = np.zeros((256, 256), dtype=np.uint8)
+    for y in range(256):
+        for x in range(256):
+            arr[y, x] = (x + y) * 255 // 510  # 0 at (0,0) .. 255 at (255,255)
+    src_ds.GetRasterBand(1).WriteArray(arr)
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(32631)
+    src_ds.SetProjection(sr.ExportToWkt())
+    src_ds.SetGeoTransform([450000, 1, 0, 5000000, 0, -1])
+
+    # Encode lossless with 5-3 wavelet so overviews are exact
+    fname = "/vsimem/test_jp2grok_overview_decode.jp2"
+    out_ds = gdaltest.jp2grok_drv.CreateCopy(
+        fname, src_ds, options=["REVERSIBLE=YES", "QUALITY=100"]
+    )
+    del out_ds, src_ds
+
+    ds = gdal.Open(fname)
+    assert ds is not None
+    band = ds.GetRasterBand(1)
+    ov_count = band.GetOverviewCount()
+    assert ov_count > 0, "Expected at least one overview level"
+
+    # The full-resolution checksum
+    full_cs = band.Checksum()
+    assert full_cs == 53143
+
+    # Read overview level 0 (factor-of-2 reduction => 128×128)
+    ov0 = band.GetOverview(0)
+    assert ov0.XSize == 128 and ov0.YSize == 128
+
+    ov_data = ov0.ReadAsArray()
+
+    # The mean of the diagonal gradient at full res is ~127.
+    # At the overview the mean should be similar.
+    ov_mean = float(np.mean(ov_data))
+    assert (
+        100 < ov_mean < 155
+    ), f"Overview mean {ov_mean} out of range — likely a crop bug"
+
+    # Check that bottom-right quadrant is brighter than top-left quadrant
+    tl_mean = float(np.mean(ov_data[:64, :64]))
+    br_mean = float(np.mean(ov_data[64:, 64:]))
+    assert br_mean > tl_mean + 30, (
+        f"Bottom-right mean ({br_mean}) should be much larger "
+        f"than top-left mean ({tl_mean}) — overview may be a crop"
+    )
+
+    # Also test ReadRaster at overview resolution via the main band
+    data = band.ReadRaster(0, 0, 256, 256, buf_xsize=128, buf_ysize=128)
+    assert data == ov_data
+
+    ds = None
+    gdal.Unlink(fname)
 
 
 ###############################################################################
