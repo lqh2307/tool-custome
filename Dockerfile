@@ -48,11 +48,13 @@ ARG PREFIX_DIR=/usr/local/opt
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 	&& apt-get upgrade -y \
 	&& apt-get install -y \
- 		build-essential \
+		build-essential \
 		cmake \
 		swig \
 		autoconf \
 		automake \
+		curl \
+		ca-certificates \
 		python3-dev \
 		python3-numpy \
 		python3-setuptools \
@@ -75,7 +77,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libzstd-dev \
 		libpq-dev \
 		libopenjp2-7-dev \
-		libmuparser-dev \ 
+		libmuparser-dev \
 		libhdf4-alt-dev \
 		libhdf5-serial-dev \
 		libxml2-dev \
@@ -94,6 +96,14 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		liblzma-dev \
 		libfreexl-dev \
 		openjdk-21-jdk \
+	&& curl --retry 3 --retry-all-errors --retry-delay 3 -LO -fsS \
+		https://github.com/rouault/libecwj2-3.3-builds/releases/download/v1/install-libecwj2-3.3-ubuntu-20.04.tar.gz \
+	&& tar xzf install-libecwj2-3.3-ubuntu-20.04.tar.gz -C / \
+	&& rm -f install-libecwj2-3.3-ubuntu-20.04.tar.gz \
+	&& mkdir -p /usr/lib/x86_64-linux-gnu \
+	&& cd /opt/libecwj2-3.3/lib \
+	&& for i in *.so*; do ln -sf /opt/libecwj2-3.3/lib/$i /usr/lib/x86_64-linux-gnu/$i; done \
+	&& ldconfig \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
@@ -107,8 +117,11 @@ RUN cd ./gdal \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_RPATH='$ORIGIN/../lib' \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/gdal \
+		-DGDAL_USE_ECW=ON \
+		-DECW_ROOT=/opt/libecwj2-3.3 \
 	&& cmake --build . --parallel ${BUILD_NUM_PROCESS:-$(nproc)} \
 	&& cmake --build . --target install \
+	&& cp -a /opt/libecwj2-3.3/lib/*.so* ${PREFIX_DIR}/gdal/lib/ \
 	&& cd ../.. \
 	&& rm -rf ./gdal
 
