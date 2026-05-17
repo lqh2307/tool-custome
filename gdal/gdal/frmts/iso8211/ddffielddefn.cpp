@@ -569,6 +569,16 @@ bool DDFFieldDefn::BuildSubfields()
                                 return false;
                             }
                             ++pszFormatCur;
+                            if (nGroupSubFieldCount < 0 ||
+                                nGroupSubFieldCount > INT_MAX / nRepeat)
+                            {
+                                CPLError(CE_Failure, CPLE_AppDefined,
+                                         "Tag %s: invalid "
+                                         "formatControls: %s",
+                                         osTag.c_str(),
+                                         _formatControls.c_str());
+                                return false;
+                            }
                             nSubFieldCounter += nGroupSubFieldCount * nRepeat;
                             if (*pszFormatCur == ')')
                                 break;
@@ -671,6 +681,15 @@ bool DDFFieldDefn::BuildSubfields()
                 std::string osPartFormatControls;
                 if (i < aosPartDescr.size() - 1)
                 {
+                    if (pszFormatCur == pszFormatStart)
+                    {
+                        CPLError(CE_Failure, CPLE_AppDefined,
+                                 "Tag %s: mismatch between arrayDescr:%s and "
+                                 "formatControls or invalid formatControls: %s",
+                                 osTag.c_str(), _arrayDescr.c_str(),
+                                 _formatControls.c_str());
+                        return false;
+                    }
                     osPartFormatControls = '(';
                     osPartFormatControls.append(
                         pszFormatStart, pszFormatCur - pszFormatStart - 1);
