@@ -1,5 +1,7 @@
 .. _gdal_vector_index:
 
+.. program:: gdal_vector_index
+
 ================================================================================
 ``gdal vector index``
 ================================================================================
@@ -53,7 +55,7 @@ Program-Specific Options
 
     Whether to write the dataset name only, instead of suffixed with the layer index.
 
-    .. warning:: Setting this option will generate a location not compatible of MapServer.
+    .. warning:: Setting this option will generate a location not compatible with MapServer.
 
 .. option:: --filename-filter <FILENAME-FILTER>
 

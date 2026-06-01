@@ -133,7 +133,7 @@ GDALVectorIndexAlgorithm::GDALVectorIndexAlgorithm()
             {
                 ReportError(
                     CE_Warning, CPLE_AppDefined,
-                    "--skip-different-crs ignored when --dst-crs specified");
+                    "--skip-different-crs ignored when --output-crs specified");
             }
 
             return true;
@@ -536,7 +536,7 @@ bool GDALVectorIndexAlgorithm::RunImpl(GDALProgressFunc pfnProgress,
                         poSrcLayer->GetDescription(), poSrcDS->GetDescription(),
                         m_skipDifferentCRS || !m_acceptDifferentCRS
                             ? ". Skipping it"
-                        : !m_skipDifferentCRS && m_calledFromOgrTIndex
+                        : m_calledFromOgrTIndex
                             ? ". You may specify -skip_differerence_srs to "
                               "skip it"
                             : "");

@@ -1,5 +1,7 @@
 .. _gdal_vector_export_schema:
 
+.. program:: gdal_vector_export_schema
+
 ================================================================================
 ``gdal vector export-schema``
 ================================================================================
@@ -49,9 +51,17 @@ Standard Options
 
 .. collapse:: Details
 
+    .. option:: -o, --output <OUTPUT>
+
+        .. versionadded:: 3.14
+        
+        Filename to write the ``OGR_SCHEMA``. If not specified, the output will be written to the standard output stream.
+
     .. include:: gdal_options/oo.rst
 
     .. include:: gdal_options/if.rst
+
+    .. include:: gdal_options/overwrite.rst
 
 .. Return status code
 .. ------------------

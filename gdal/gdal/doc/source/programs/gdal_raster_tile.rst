@@ -1,5 +1,7 @@
 .. _gdal_raster_tile:
 
+.. program:: gdal_raster_tile
+
 ================================================================================
 ``gdal raster tile``
 ================================================================================
@@ -341,7 +343,7 @@ Examples
       gdal raster tile --tiling-scheme raster input.tif output_folder
 
 .. example::
-   :title: Creating a tiled dataset, compatible of the Spatio-Temporal Asset Catalog Tiled Assets specification, using Cloud-Optimized GeoTIFF metatiles of dimension 4096x4096.
+   :title: Creating a tiled dataset, compatible with the Spatio-Temporal Asset Catalog Tiled Assets specification, using Cloud-Optimized GeoTIFF metatiles of dimension 4096x4096.
 
    .. code-block:: bash
 
