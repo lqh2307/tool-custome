@@ -182,7 +182,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libboost-filesystem1.83.0 \
 		libboost-program-options1.83.0 \
 		libboost-system1.83.0 \
-		libosmium2 \
+		libosmium2-dev \
 		zlib1g \
 		osmosis \
 		libcurl4 \
