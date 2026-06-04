@@ -126,6 +126,43 @@ RUN cd ./gdal \
 	&& rm -rf ./gdal
 
 
+# Build osmium-tool
+FROM ${BUILDER_IMAGE} AS osmium-tool-builder
+
+ARG BUILD_NUM_PROCESS
+ARG PREFIX_DIR=/usr/local/opt
+
+RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
+	&& apt-get upgrade -y \
+	&& apt-get install -y \
+		build-essential \
+		cmake \
+		libosmium2-dev \
+		libprotozero-dev \
+		nlohmann-json3-dev \
+		libboost-program-options-dev \
+		libbz2-dev \
+		zlib1g-dev \
+		liblz4-dev \
+		libexpat1-dev \
+	&& apt-get -y --purge autoremove \
+	&& apt-get clean \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY ./osmium-tool .
+
+RUN cd ./osmium-tool \
+	&& mkdir -p ./build \
+	&& cd ./build \
+	&& cmake .. \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/osmium-tool \
+	&& cmake --build . --parallel ${BUILD_NUM_PROCESS:-$(nproc)} \
+	&& cmake --build . --target install \
+	&& cd ../.. \
+	&& rm -rf ./osmium-tool
+
+
 # Build target
 FROM ${TARGET_IMAGE} AS final
 
@@ -145,6 +182,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libboost-filesystem1.83.0 \
 		libboost-program-options1.83.0 \
 		libboost-system1.83.0 \
+		libosmium2 \
 		zlib1g \
 		osmosis \
 		libcurl4 \
@@ -211,9 +249,10 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 
 COPY --from=tilemaker-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY --from=gdal-builder ${PREFIX_DIR} ${PREFIX_DIR}
+COPY --from=osmium-tool-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
-ENV PATH=${PREFIX_DIR}/venv/bin:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/scripts:${PATH}
+ENV PATH=${PREFIX_DIR}/venv/bin:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/osmium-tool/bin:${PREFIX_DIR}/scripts:${PATH}
 ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib
 ENV PYTHONPATH=${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages
 
