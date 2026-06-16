@@ -12,6 +12,7 @@
 ###############################################################################
 
 import json
+import os
 
 import gdaltest
 import ogrtest
@@ -967,7 +968,7 @@ def test_gdalalg_vector_pipeline_help():
     out = gdaltest.runexternal(
         f"{gdal_path} vector pipeline read foo.shp ! select --help"
     )
-    assert out.startswith("Usage: select [OPTIONS] <FIELDS>")
+    assert out.startswith("Usage: select [OPTIONS] [<FIELDS>]")
 
 
 def test_gdalalg_vector_pipeline_skip_errors(tmp_vsimem):
@@ -1042,6 +1043,30 @@ def test_gdalalg_vector_pipeline_read_limit(tmp_vsimem):
     with gdal.OpenEx(dst_filename) as ds:
         assert ds.GetLayer(0).GetFeatureCount() == 3
         assert ds.GetLayer(1).GetFeatureCount() == 3
+
+
+@pytest.mark.require_driver("GDALG")
+def test_gdalalg_vector_pipeline_limit_test_ogrsf(tmp_path):
+
+    import test_cli_utilities
+
+    if test_cli_utilities.get_test_ogrsf_path() is None:
+        pytest.skip()
+
+    input_filename = os.path.join(os.getcwd(), "../ogr/data/poly.shp")
+    gdalg_filename = tmp_path / "out.gdalg.json"
+    with gdal.alg.vector.pipeline(
+        pipeline=f"read {input_filename} ! limit --limit 8 ! write {gdalg_filename}"
+    ):
+        pass
+
+    ret = gdaltest.runexternal(
+        test_cli_utilities.get_test_ogrsf_path() + f" -ro {gdalg_filename}"
+    )
+
+    assert "INFO" in ret
+    assert "ERROR" not in ret
+    assert "FAILURE" not in ret
 
 
 @pytest.mark.require_driver("GPKG")
@@ -1121,25 +1146,28 @@ def test_gdalalg_vector_pipeline_read_execute_sql(tmp_vsimem):
 @gdaltest.enable_exceptions()
 def test_gdalalg_vector_pipeline_read_wkt(tmp_vsimem, srid):
 
-    gdal.alg.vector.pipeline(
-        f'read "{srid}LINESTRING (3 3, 4 4)" ! write {tmp_vsimem}/out.shp'
-    )
+    with gdal.alg.vector.pipeline(
+        f'read "{srid}LINESTRING (3 3, 4 4)" ! write --format=MEM --output unnamed'
+    ) as alg:
+        ds = alg.Output()
+        assert ds.GetLayerCount() == 1
 
-    ds = gdal.OpenEx(tmp_vsimem / "out.shp")
-    assert ds.GetLayerCount() == 1
+        lyr = ds.GetLayer(0)
+        assert lyr.GetName() == "layer"
+        assert lyr.GetGeomType() == ogr.wkbLineString
+        assert lyr.GetFeatureCount() == 1
 
-    lyr = ds.GetLayer(0)
-    assert lyr.GetGeomType() == ogr.wkbLineString
-    assert lyr.GetFeatureCount() == 1
+        if srid:
+            assert lyr.GetSpatialRef().GetAuthorityCode() == srid.replace(
+                "SRID=", ""
+            ).strip(";")
+        else:
+            assert lyr.GetSpatialRef() is None
 
-    if srid:
-        assert lyr.GetSpatialRef().GetAttrValue("AUTHORITY", 1) == srid.replace(
-            "SRID=", ""
-        ).strip(";")
-    else:
-        assert lyr.GetSpatialRef() is None
-
-    assert lyr.GetNextFeature().GetGeometryRef().ExportToWkt() == "LINESTRING (3 3,4 4)"
+        assert (
+            lyr.GetNextFeature().GetGeometryRef().ExportToWkt()
+            == "LINESTRING (3 3,4 4)"
+        )
 
 
 @pytest.mark.parametrize(

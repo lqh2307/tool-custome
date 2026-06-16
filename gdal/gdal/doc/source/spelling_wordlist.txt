@@ -527,6 +527,7 @@ danlittle
 dat
 DataArray
 dataAxisToSRSAxisMapping
+datacube
 DATADIR
 DataElement
 datafile
@@ -819,6 +820,7 @@ eWorkingDataType
 eXchange
 exe
 executables
+exfiltration
 Exif
 explodeCollections
 eXploration

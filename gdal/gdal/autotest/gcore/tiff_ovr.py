@@ -1235,7 +1235,7 @@ def test_tiff_ovr_32(tmp_path, both_endian):
     ds.BuildOverviews("cubic", overviewlist=[2, 5])
 
     cs = ds.GetRasterBand(1).GetOverview(0).Checksum()
-    expected_cs_band1_overview0 = 21296
+    expected_cs_band1_overview0 = 21615
     assert (
         cs == expected_cs_band1_overview0
     ), "Checksum is %d. Expected checksum is %d for overview 0." % (
@@ -1244,7 +1244,7 @@ def test_tiff_ovr_32(tmp_path, both_endian):
     )
 
     cs = ds.GetRasterBand(3).GetOverview(1).Checksum()
-    expected_cs_band3_overview1 = 1994
+    expected_cs_band3_overview1 = 2027
     assert (
         cs == expected_cs_band3_overview1
     ), "Checksum is %d. Expected checksum is %d for overview 1." % (
@@ -3143,3 +3143,143 @@ def test_tiff_ovr_INT_MAX_reduction_factor_external(tmp_vsimem):
     gdal.GetDriverByName("GTIFF").Create(tmp_vsimem / "out.tif", 20, 20)
     ds = gdal.Open(tmp_vsimem / "out.tif")
     ds.BuildOverviews("NEAR", [(1 << 31) - 1])
+
+
+###############################################################################
+
+
+@gdaltest.enable_exceptions()
+def test_tiff_ovr_external_but_internal_mask(tmp_path):
+
+    with gdal.GetDriverByName("GTIFF").Create(tmp_path / "out.tif", 8, 4) as ds:
+        ds.CreateMaskBand(gdal.GMF_PER_DATASET)
+        ds.WriteRaster(0, 0, 4, 4, b"\xff" * 16)
+        ds.GetRasterBand(1).GetMaskBand().WriteRaster(4, 0, 4, 4, b"\xff" * 16)
+
+    # Generate ovr factor 2
+    with gdal.Open(tmp_path / "out.tif") as ds:
+        ds.BuildOverviews("NEAR", [2])
+        assert ds.GetRasterBand(1).GetOverviewCount() == 1
+        assert (
+            ds.GetRasterBand(1).GetOverview(0).ReadRaster()
+            == ((b"\xff" * 2) + (b"\x00" * 2)) * 2
+        )
+        assert ds.GetRasterBand(1).GetMaskFlags() == gdal.GMF_PER_DATASET
+        assert ds.GetRasterBand(1).GetMaskBand().GetOverviewCount() == 1
+        assert (
+            ds.GetRasterBand(1).GetMaskBand().GetOverview(0).ReadRaster()
+            == ((b"\x00" * 2) + (b"\xff" * 2)) * 2
+        )
+
+    # Re-open and check content
+    with gdal.Open(tmp_path / "out.tif") as ds:
+        assert ds.GetRasterBand(1).GetOverviewCount() == 1
+        assert (
+            ds.GetRasterBand(1).GetOverview(0).ReadRaster()
+            == ((b"\xff" * 2) + (b"\x00" * 2)) * 2
+        )
+        assert ds.GetRasterBand(1).GetMaskFlags() == gdal.GMF_PER_DATASET
+        assert ds.GetRasterBand(1).GetMaskBand().GetOverviewCount() == 1
+        assert (
+            ds.GetRasterBand(1).GetMaskBand().GetOverview(0).ReadRaster()
+            == ((b"\x00" * 2) + (b"\xff" * 2)) * 2
+        )
+        assert (
+            ds.GetRasterBand(1).GetOverview(0).GetMaskBand().ReadRaster()
+            == ((b"\x00" * 2) + (b"\xff" * 2)) * 2
+        )
+
+    # Clear overviews
+    with gdal.Open(tmp_path / "out.tif.ovr", gdal.GA_Update) as ds:
+        ds.GetRasterBand(1).Fill(0)
+        ds.GetRasterBand(1).GetMaskBand().Fill(0)
+
+    # Regenerate existing overviews
+    with gdal.Open(tmp_path / "out.tif") as ds:
+        ds.BuildOverviews("NEAR", [2])
+        assert ds.GetRasterBand(1).GetOverviewCount() == 1
+        assert (
+            ds.GetRasterBand(1).GetOverview(0).ReadRaster()
+            == ((b"\xff" * 2) + (b"\x00" * 2)) * 2
+        )
+        assert ds.GetRasterBand(1).GetMaskFlags() == gdal.GMF_PER_DATASET
+        assert ds.GetRasterBand(1).GetMaskBand().GetOverviewCount() == 1
+        assert (
+            ds.GetRasterBand(1).GetMaskBand().GetOverview(0).ReadRaster()
+            == ((b"\x00" * 2) + (b"\xff" * 2)) * 2
+        )
+        assert (
+            ds.GetRasterBand(1).GetOverview(0).GetMaskBand().ReadRaster()
+            == ((b"\x00" * 2) + (b"\xff" * 2)) * 2
+        )
+
+    # Add new overviews
+    with gdal.Open(tmp_path / "out.tif") as ds:
+        ds.BuildOverviews("NEAR", [4])
+        assert ds.GetRasterBand(1).GetOverviewCount() == 2
+        assert (
+            ds.GetRasterBand(1).GetOverview(0).ReadRaster()
+            == ((b"\xff" * 2) + (b"\x00" * 2)) * 2
+        )
+        assert ds.GetRasterBand(1).GetOverview(1).ReadRaster() == b"\xff\x00"
+        assert ds.GetRasterBand(1).GetMaskFlags() == gdal.GMF_PER_DATASET
+        assert ds.GetRasterBand(1).GetMaskBand().GetOverviewCount() == 2
+        assert (
+            ds.GetRasterBand(1).GetMaskBand().GetOverview(0).ReadRaster()
+            == ((b"\x00" * 2) + (b"\xff" * 2)) * 2
+        )
+        assert (
+            ds.GetRasterBand(1).GetOverview(0).GetMaskBand().ReadRaster()
+            == ((b"\x00" * 2) + (b"\xff" * 2)) * 2
+        )
+        assert (
+            ds.GetRasterBand(1).GetMaskBand().GetOverview(1).ReadRaster() == b"\x00\xff"
+        )
+        assert (
+            ds.GetRasterBand(1).GetOverview(1).GetMaskBand().ReadRaster() == b"\x00\xff"
+        )
+
+    # Re-open and check content
+    with gdal.Open(tmp_path / "out.tif") as ds:
+        assert ds.GetRasterBand(1).GetOverviewCount() == 2
+        assert (
+            ds.GetRasterBand(1).GetOverview(0).ReadRaster()
+            == ((b"\xff" * 2) + (b"\x00" * 2)) * 2
+        )
+        assert ds.GetRasterBand(1).GetOverview(1).ReadRaster() == b"\xff\x00"
+        assert ds.GetRasterBand(1).GetMaskFlags() == gdal.GMF_PER_DATASET
+        assert ds.GetRasterBand(1).GetMaskBand().GetOverviewCount() == 2
+        assert (
+            ds.GetRasterBand(1).GetMaskBand().GetOverview(0).ReadRaster()
+            == ((b"\x00" * 2) + (b"\xff" * 2)) * 2
+        )
+        assert (
+            ds.GetRasterBand(1).GetOverview(0).GetMaskBand().ReadRaster()
+            == ((b"\x00" * 2) + (b"\xff" * 2)) * 2
+        )
+        assert (
+            ds.GetRasterBand(1).GetMaskBand().GetOverview(1).ReadRaster() == b"\x00\xff"
+        )
+        assert (
+            ds.GetRasterBand(1).GetOverview(1).GetMaskBand().ReadRaster() == b"\x00\xff"
+        )
+
+
+###############################################################################
+
+
+@gdaltest.enable_exceptions()
+def test_tiff_ovr_bugfix_gh_14728_cubic_low_alpha_values(tmp_vsimem):
+
+    gdal.CopyFile("data/gtiff/fix_14728.tif", tmp_vsimem / "test.tif")
+    ds = gdal.Open(tmp_vsimem / "test.tif", gdal.GA_Update)
+    ds.BuildOverviews("CUBIC", [16])
+    # Would be [255, 255] without the fix
+    assert [
+        struct.unpack(
+            "B", ds.GetRasterBand(1).GetOverview(0).ReadRaster(271, 380, 1, 1)
+        )[0],
+        struct.unpack(
+            "B", ds.GetRasterBand(2).GetOverview(0).ReadRaster(271, 380, 1, 1)
+        )[0],
+    ] == [156, 25]

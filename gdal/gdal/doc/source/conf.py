@@ -107,6 +107,7 @@ exclude_patterns = [
     "api/python/modules.rst",
     "gdal_rtd/README.md",
     "user/geometry_validity_examples.rst",
+    "programs/nodata_handling_gdaladdo_gdal_translate.rst",
 ]
 
 # Prevents double hyphen (--) to be replaced by Unicode long dash character
@@ -502,6 +503,34 @@ man_pages = [
         "programs/gdal_mdim_mosaic",
         "gdal-mdim-mosaic",
         "Build a mosaic, either virtual (VRT) or materialized, from multidimensional datasets",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_mdim_pipeline",
+        "gdal-mdim-pipeline",
+        "Process a multidimensional dataset applying several steps",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_mdim_read",
+        "gdal-mdim-read",
+        "Read a multidimensional dataset (pipeline only)",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_mdim_reproject",
+        "gdal-mdim-reproject",
+        "Reproject a multidimensional dataset",
+        [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_mdim_write",
+        "gdal-mdim-write",
+        "Write a multidimensional dataset (pipeline only)",
         [author_evenr],
         1,
     ),
@@ -951,6 +980,13 @@ man_pages = [
         "gdal-vector-filter",
         "Filter a vector dataset",
         [author_evenr],
+        1,
+    ),
+    (
+        "programs/gdal_vector_explode",
+        "gdal-vector-explode",
+        "Explode fields or geometries of a vector dataset",
+        [author_dbaston],
         1,
     ),
     (
@@ -1486,11 +1522,23 @@ man_pages = [
 
 # latex
 
+# preamble adds customisations to the top of the generated .tex file
+
+# \DeclareUnicodeCharacter: map unicode chars (prime, zero-width space) to LaTeX equivalents
+# \newcolumntype{P}: custom column type for line-wrapping long cells (e.g. XML tags)
+#   \raggedright turns off justification
+#   \hspace{0pt} inserts a zero-width breakpoint so long unspaced strings can break
+#   \sloppy relaxes LaTeX's line-breaking strictness for edge cases
+# \LTleft/\LTright: fix longtable centering (caused gaps at the sides and misaligned border)
+
 preamble = r"""
 \ifdefined\DeclareUnicodeCharacter
   \DeclareUnicodeCharacter{2032}{$'$}% prime
   \DeclareUnicodeCharacter{200B}{{\hskip 0pt}}
 \fi
+\newcolumntype{P}[1]{>{\raggedright\hspace{0pt}\sloppy}p{#1}}
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
 """
 
 # Package substitutefont no longer exists since TeXLive 2023 later than August 2023

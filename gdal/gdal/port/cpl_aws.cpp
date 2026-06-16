@@ -21,6 +21,7 @@
 #include "cpl_time.h"
 #include "cpl_minixml.h"
 #include "cpl_multiproc.h"
+#include "cpl_nasa_earthdata.h"
 #include "cpl_spawn.h"
 #include "cpl_http.h"
 #include <algorithm>
@@ -1942,6 +1943,32 @@ bool VSIS3HandleHelper::GetConfiguration(
 {
     eCredentialsSource = AWSCredentialsSource::UNINITIALIZED;
 
+    bool bErrorEDL = false;
+    auto poEarthdataCredentialProvider =
+        CPLNasaEarthdataCredentialProvider::Get(osPathForOption, &bErrorEDL);
+    if (poEarthdataCredentialProvider)
+    {
+        osAccessKeyId = poEarthdataCredentialProvider->GetAccessKeyId();
+        if (!osAccessKeyId.empty())
+        {
+            osSecretAccessKey =
+                poEarthdataCredentialProvider->GetSecretAccessKey();
+            osSessionToken = poEarthdataCredentialProvider->GetSessionToken();
+            eCredentialsSource = AWSCredentialsSource::NASA_EARTHDATA;
+
+            // Earthdata uses us-west-2 region and requires in-bound requests
+            // to come from that region.
+            osRegion = VSIGetPathSpecificOption(osPathForOption.c_str(),
+                                                "AWS_REGION", "us-west-2");
+
+            return true;
+        }
+        else
+            return false;
+    }
+    else if (bErrorEDL)
+        return false;
+
     // AWS_REGION is GDAL specific. Later overloaded by standard
     // AWS_DEFAULT_REGION
     osRegion = CSLFetchNameValueDef(
@@ -2255,6 +2282,8 @@ void VSIS3HandleHelper::CleanMutex()
 
 void VSIS3HandleHelper::ClearCache()
 {
+    CPLNasaEarthdataCredentialProvider::ClearCache();
+
     CPLMutexHolder oHolder(&ghMutex);
 
     geCredentialsSource = AWSCredentialsSource::UNINITIALIZED;
@@ -2305,17 +2334,20 @@ VSIS3HandleHelper *VSIS3HandleHelper::BuildFromURI(const char *pszURI,
         return nullptr;
     }
 
-    // According to
-    // http://docs.aws.amazon.com/cli/latest/userguide/cli-environment.html "
-    // This variable overrides the default region of the in-use profile, if
-    // set."
-    std::string osDefaultRegion = CSLFetchNameValueDef(
-        papszOptions, "AWS_DEFAULT_REGION",
-        VSIGetPathSpecificOption(osPathForOption.c_str(), "AWS_DEFAULT_REGION",
-                                 ""));
-    if (!osDefaultRegion.empty())
+    if (eCredentialsSource != AWSCredentialsSource::NASA_EARTHDATA)
     {
-        osRegion = std::move(osDefaultRegion);
+        // According to
+        // http://docs.aws.amazon.com/cli/latest/userguide/cli-environment.html "
+        // This variable overrides the default region of the in-use profile, if
+        // set."
+        std::string osDefaultRegion = CSLFetchNameValueDef(
+            papszOptions, "AWS_DEFAULT_REGION",
+            VSIGetPathSpecificOption(osPathForOption.c_str(),
+                                     "AWS_DEFAULT_REGION", ""));
+        if (!osDefaultRegion.empty())
+        {
+            osRegion = std::move(osDefaultRegion);
+        }
     }
 
     std::string osEndpoint = VSIGetPathSpecificOption(
@@ -2809,48 +2841,54 @@ bool VSIS3HandleHelper::CanRestartOnError(const char *pszErrorMsg,
             }
             return false;
         }
+
+        /* If we have a body with
+        <Error><Code>PermanentRedirect</Code><Message>The bucket you are
+        attempting to access must be addressed using the specified endpoint.
+        Please send all future requests to this
+        endpoint.</Message><Bucket>bucket</Bucket><Endpoint>bucket.region.s3.amazonaws.com</Endpoint></Error>
+        and headers like
+        x-amz-bucket-region: eu-west-1
+        then we must use s3-$(x-amz-bucket-region).amazon.com as endpoint. */
+        const char *pszRegionPtr =
+            (pszHeaders != nullptr)
+                ? strstr(pszHeaders, "x-amz-bucket-region: ")
+                : nullptr;
+        if (pszRegionPtr != nullptr)
+        {
+            std::string osRegion(pszRegionPtr +
+                                 strlen("x-amz-bucket-region: "));
+            size_t nPos = osRegion.find('\r');
+            if (nPos != std::string::npos)
+                osRegion.resize(nPos);
+            if (strncmp(pszEndpoint, m_osBucket.c_str(), m_osBucket.size()) ==
+                    0 &&
+                pszEndpoint[m_osBucket.size()] == '.')
+            {
+                pszEndpoint += m_osBucket.size() + 1;
+            }
+
+            SetEndpoint(pszEndpoint);
+            SetRegion(osRegion.c_str());
+            CPLDebug(AWS_DEBUG_KEY, "Switching to endpoint %s",
+                     m_osEndpoint.c_str());
+            CPLDebug(AWS_DEBUG_KEY, "Switching to region %s",
+                     m_osRegion.c_str());
+            CPLDestroyXMLNode(psTree);
+            if (!bIsTemporaryRedirect)
+                VSIS3UpdateParams::UpdateMapFromHandle(this);
+            return true;
+        }
+
         if (!m_bUseVirtualHosting &&
+            m_osBucket.find('.') == std::string::npos &&
             strncmp(pszEndpoint, m_osBucket.c_str(), m_osBucket.size()) == 0 &&
             pszEndpoint[m_osBucket.size()] == '.')
         {
-            /* If we have a body with
-            <Error><Code>PermanentRedirect</Code><Message>The bucket you are
-            attempting to access must be addressed using the specified endpoint.
-            Please send all future requests to this
-            endpoint.</Message><Bucket>bucket.with.dot</Bucket><Endpoint>bucket.with.dot.s3.amazonaws.com</Endpoint></Error>
-            and headers like
-            x-amz-bucket-region: eu-west-1
-            and the bucket name has dot in it,
-            then we must use s3.$(x-amz-bucket-region).amazon.com as endpoint.
-            See #7154 */
-            const char *pszRegionPtr =
-                (pszHeaders != nullptr)
-                    ? strstr(pszHeaders, "x-amz-bucket-region: ")
-                    : nullptr;
-            if (strchr(m_osBucket.c_str(), '.') != nullptr &&
-                pszRegionPtr != nullptr)
-            {
-                std::string osRegion(pszRegionPtr +
-                                     strlen("x-amz-bucket-region: "));
-                size_t nPos = osRegion.find('\r');
-                if (nPos != std::string::npos)
-                    osRegion.resize(nPos);
-                SetEndpoint(
-                    CPLSPrintf("s3.%s.amazonaws.com", osRegion.c_str()));
-                SetRegion(osRegion.c_str());
-                CPLDebug(AWS_DEBUG_KEY, "Switching to endpoint %s",
-                         m_osEndpoint.c_str());
-                CPLDebug(AWS_DEBUG_KEY, "Switching to region %s",
-                         m_osRegion.c_str());
-                CPLDestroyXMLNode(psTree);
-                if (!bIsTemporaryRedirect)
-                    VSIS3UpdateParams::UpdateMapFromHandle(this);
-                return true;
-            }
-
             m_bUseVirtualHosting = true;
             CPLDebug(AWS_DEBUG_KEY, "Switching to virtual hosting");
         }
+
         SetEndpoint(m_bUseVirtualHosting ? pszEndpoint + m_osBucket.size() + 1
                                          : pszEndpoint);
         CPLDebug(AWS_DEBUG_KEY, "Switching to endpoint %s",
