@@ -56,6 +56,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		curl \
 		ca-certificates \
 		python3-dev \
+		python3-pip \
 		python3-numpy \
 		python3-setuptools \
 		libcurl4-openssl-dev \
