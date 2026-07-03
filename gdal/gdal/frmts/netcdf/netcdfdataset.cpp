@@ -3297,6 +3297,18 @@ void netCDFDataset::SetProjectionFromVar(
                 }
             }
         }
+        else
+        {
+            std::string osVarName = "unknown";
+            NCDFGetVarFullName(nGroupId, nVarId, osVarName);
+
+            CPLError(CE_Warning, CPLE_AppDefined,
+                     "'%s' attribute of variable '%s' references grid mapping "
+                     "variable '%s', but no such variable exists. The spatial "
+                     "referencing of this dataset may be incorrect.",
+                     CF_GRD_MAPPING, osVarName.c_str(),
+                     osGridMappingValue.c_str());
+        }
     }
 
     // Get information about the file.
@@ -4293,7 +4305,7 @@ void netCDFDataset::SetProjectionFromVar(
     if (!m_oSRS.IsEmpty())
     {
         OGRSpatialReference oGeogCRS;
-        oGeogCRS.CopyGeogCSFrom(&m_oSRS);
+        oGeogCRS.CopyGeogCSFrom(&m_oSRS, true);
         const char *const apszOptions[] = {"FORMAT=WKT2_2019", nullptr};
 
         std::string osWKTTmp = oGeogCRS.exportToWkt(apszOptions);
@@ -12575,7 +12587,7 @@ CPLErr netCDFDataset::CreateGrpVectorLayers(
         SetProjectionFromVar(nCdfId, nFirstVarId, true);
     const char *pszValue = FetchAttr(nCdfId, nFirstVarId, CF_GRD_MAPPING);
     std::string osGridMapping = pszValue ? pszValue : "";
-    aosMetadata = aosMetadataBackup;
+    aosMetadata = std::move(aosMetadataBackup);
 
     OGRSpatialReference *poSRS = nullptr;
     if (!m_oSRS.IsEmpty())

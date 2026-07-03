@@ -7,10 +7,12 @@
 #include <unordered_set>
 #include "helpers.h"
 #include "visvalingam.h"
+#include "simplify_buildings.h"
 using namespace std;
 extern bool verbose;
 
 thread_local bool enabledUserSignal = false;
+thread_local MultiPolygon scaledMultiPolygon;
 typedef std::vector<OutputObjectID>::const_iterator OutputObjectsConstIt;
 typedef std::pair<OutputObjectsConstIt, OutputObjectsConstIt> OutputObjectsConstItPair;
 
@@ -140,6 +142,7 @@ void writeMultiLinestring(
 			if (simplifyAlgo==LayerDef::VISVALINGAM) {
 				tmp.push_back(simplifyVis(ls, simplifyLevel));
 			} else {
+				// buildings algorithm not supported for linestrings, so fall back to DP
 				tmp.push_back(simplify(ls, simplifyLevel));
 			}
 		}
@@ -241,10 +244,16 @@ void writeMultiPolygon(
 	unsigned simplifyAlgo,
 	const MultiPolygon& mp
 ) {
-	MultiPolygon current = bbox.scaleGeometry(mp);
+	bbox.scaleGeometry(scaledMultiPolygon, mp);
+	MultiPolygon &current = scaledMultiPolygon;
 	if (simplifyLevel>0) {
 		if (simplifyAlgo == LayerDef::VISVALINGAM) {
 			current = simplifyVis(current, simplifyLevel/bbox.xscale);
+		} else if (simplifyAlgo == LayerDef::BUILDINGS) {
+			if (current.size() > 1 || boost::geometry::num_points(current)>5) {
+				geom::correct(current); // self-intersections can break simplification
+				simplifyBuildings(current, simplifyLevel/bbox.xscale);
+			}
 		} else {
 			current = simplify(current, simplifyLevel/bbox.xscale);
 		}
@@ -256,13 +265,31 @@ void writeMultiPolygon(
 	geom::correct(current);
 
 	geom::validity_failure_type failure;
-	if (verbose && !geom::is_valid(current, failure)) { 
-		cout << "output multipolygon has " << boost_validity_error(failure) << endl; 
+	if (!geom::is_valid(current, failure)) {
+		if (verbose) {
+			cout << "output multipolygon has " << boost_validity_error(failure) << endl;
 
-		if (!geom::is_valid(mp, failure)) 
-			cout << "input multipolygon has " << boost_validity_error(failure) << endl; 
-		else
-			cout << "input multipolygon valid" << endl;
+			if (!geom::is_valid(mp, failure))
+				cout << "input multipolygon has " << boost_validity_error(failure) << endl;
+			else
+				cout << "input multipolygon valid" << endl;
+		}
+		
+		if (simplifyLevel > 0) {
+			// Simplification can turn a valid input into a self-intersecting/spiky
+			// one; such polygons are silently dropped by many renderers (missing
+			// features). Repair (dissolve, then zero-width buffer) before writing.
+			bool repaired = repair_multi_polygon(current);
+
+			if (geom::is_empty(current))
+				return;
+
+			if (verbose && !repaired) {
+				geom::validity_failure_type postFailure;
+				if (!geom::is_valid(current, postFailure))
+					cout << "output multipolygon STILL invalid after repair: " << boost_validity_error(postFailure) << endl;
+			}
+		}
 	}
 
 	vtzero::polygon_feature_builder fbuilder{vtLayer};

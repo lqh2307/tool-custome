@@ -21,6 +21,7 @@
 
 #include "Lerc_c_api.h"
 
+#include <algorithm>
 #include <limits>
 
 #ifndef LERC_AT_LEAST_VERSION
@@ -125,7 +126,7 @@ const unsigned char *LERCDataset::GetDecodedImage()
     if (m_nMaskCount)
     {
         m_pabyDecodedMask.reset(static_cast<unsigned char *>(VSI_MALLOC_VERBOSE(
-            static_cast<size_t>(nRasterXSize) * nRasterYSize * m_nLercBands)));
+            static_cast<size_t>(nRasterXSize) * nRasterYSize * m_nMaskCount)));
         if (!m_pabyDecodedMask)
             m_pabyDecodedImage.reset();
     }
@@ -292,7 +293,8 @@ GDALRasterBand *LERCBand::GetMaskBand()
     if (poGDS->m_nMaskCount == 0)
         return GDALPamRasterBand::GetMaskBand();
     if (!m_poMaskBand)
-        m_poMaskBand = std::make_unique<LERCMaskBand>(poGDS, nBand - 1);
+        m_poMaskBand = std::make_unique<LERCMaskBand>(
+            poGDS, poGDS->m_nMaskCount == 1 ? 0 : nBand - 1);
     return m_poMaskBand.get();
 }
 
@@ -332,8 +334,10 @@ GDALDataset *LERCDataset::Open(GDALOpenInfo *poOpenInfo)
     VSIStatBufL sStat;
     if (VSIStatL(poOpenInfo->pszFilename, &sStat) != 0)
         return nullptr;
-    if (static_cast<uint64_t>(sStat.st_size) >
-        std::numeric_limits<unsigned>::max())
+
+    const unsigned nBlobSize = static_cast<unsigned>(std::min<uint64_t>(
+        sStat.st_size, std::numeric_limits<unsigned>::max()));
+    if (nBlobSize != static_cast<uint64_t>(sStat.st_size))
     {
         CPLError(CE_Failure, CPLE_AppDefined, "Too large file");
         return nullptr;
@@ -346,7 +350,6 @@ GDALDataset *LERCDataset::Open(GDALOpenInfo *poOpenInfo)
                  "Too large file compared to usable RAM");
         return nullptr;
     }
-    const unsigned nBlobSize = static_cast<unsigned>(sStat.st_size);
     std::unique_ptr<unsigned char, VSIFreeReleaser> pabyBlob(
         static_cast<unsigned char *>(VSI_MALLOC_VERBOSE(nBlobSize)));
     if (!pabyBlob)
@@ -424,9 +427,11 @@ GDALDataset *LERCDataset::Open(GDALOpenInfo *poOpenInfo)
                  nCols, nRows, nDepth, nLercBands);
         return nullptr;
     }
-    const int nDTSize = GDALGetDataTypeSizeBytes(eDT);
-    // nCols * nRows limitation is due to liblerc assuming it fits on int
+    const int nDTSize = std::max(1, GDALGetDataTypeSizeBytes(eDT));
+    // nCols * nRows * nDepth limitation is due to liblerc assuming it fits on int
+    // Cf third_party/LercLib/Lerc.cpp#L381
     if (nCols > std::numeric_limits<int>::max() / nRows ||
+        nCols * nRows > std::numeric_limits<int>::max() / nDepth ||
         nDepth > static_cast<unsigned>(std::numeric_limits<int>::max()) /
                      nLercBands ||
         static_cast<size_t>(nCols) * nRows >

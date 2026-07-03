@@ -980,7 +980,7 @@ GDALCOGCreator::Create(const char *pszFilename, GDALDataset *const poSrcDS,
         {
             poCurDS->GetRasterBand(i)->ComputeStatistics(
                 /*bApproxOK=*/FALSE, nullptr, nullptr, nullptr, nullptr,
-                nullptr, nullptr);
+                nullptr, nullptr, nullptr);
         }
     }
     else if (bRemoveStats && bWrkHasStatistics)
@@ -1530,6 +1530,9 @@ static GDALDataset *COGCreate(const char *pszFilename, int nXSize, int nYSize,
         CSLFetchNameValueDef(papszOptions, "BLOCKSIZE", "512");
     aosOptions.SetNameValue("BLOCKXSIZE", pszBlockSize);
     aosOptions.SetNameValue("BLOCKYSIZE", pszBlockSize);
+
+    // doesn't hurt on the temporary file even if final file doesn't need it
+    aosOptions.SetNameValue("BIGTIFF", "YES");
 
     bool bHasLZW = false;
     bool bHasDEFLATE = false;

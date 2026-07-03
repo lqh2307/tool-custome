@@ -758,7 +758,15 @@ DumpDimensions(const std::shared_ptr<GDALGroup> &rootGroup,
         if (poIndexingVariable)
         {
             serializer.AddObjKey("indexing_variable");
-            if (rootGroup->OpenMDArray(poIndexingVariable->GetFullName()))
+            bool isKnownFromRoot;
+            {
+                // For autotest/gdrivers/tiledb_multidim.py::test_tiledb_multidim_array_read_dim_label_and_spatial_ref
+                CPLErrorStateBackuper oBackuper(CPLQuietErrorHandler);
+                isKnownFromRoot =
+                    rootGroup->OpenMDArrayFromFullname(
+                        poIndexingVariable->GetFullName()) != nullptr;
+            }
+            if (isKnownFromRoot)
             {
                 serializer.Add(poIndexingVariable->GetFullName());
             }
@@ -1412,7 +1420,7 @@ void GDALMultiDimTextOutputDumper::DumpAttributes(
             {
                 attrs.push_back({poAttr->GetName(),
                                  TypeToString(poAttr->GetDataType()),
-                                 osAttrVal});
+                                 std::move(osAttrVal)});
             }
             else
             {
@@ -1433,7 +1441,7 @@ void GDALMultiDimTextOutputDumper::DumpAttributes(
                              bFirstLineAttr
                                  ? TypeToString(poAttr->GetDataType())
                                  : std::string(),
-                             osVal});
+                             std::move(osVal)});
                         osAttrVal = osAttrVal.substr(nLastBreak + 1);
                     }
                     else
@@ -1446,7 +1454,7 @@ void GDALMultiDimTextOutputDumper::DumpAttributes(
                     {bFirstLineAttr ? poAttr->GetName() : std::string(),
                      bFirstLineAttr ? TypeToString(poAttr->GetDataType())
                                     : std::string(),
-                     osAttrVal});
+                     std::move(osAttrVal)});
             }
         }
         DumpTable(attrs, nIndentSpaces + 2);
@@ -1525,7 +1533,7 @@ DimsToSameDimGroup(const std::vector<std::shared_ptr<GDALDimension>> &dims)
             osDimGroup.resize(nPos);
             if (osSameDimGroup.empty())
             {
-                osSameDimGroup = osDimGroup;
+                osSameDimGroup = std::move(osDimGroup);
             }
             else if (osSameDimGroup != osDimGroup)
             {
@@ -1838,11 +1846,13 @@ void GDALMultiDimTextOutputDumper::DumpArraysSummary(
             bool bAllZero = true;
             std::string osChunkSize =
                 BlockSizeToString(poArray->GetBlockSize(), &bAllZero);
+            if (bAllZero)
+                osChunkSize = "(unknown)";
 
             std::vector<std::string> line{
                 poArray->GetFullName(), TypeToString(poArray->GetDataType()),
                 poArray->GetUnit(), DimsToShapeString(dims),
-                bAllZero ? std::string("(unknown)") : osChunkSize};
+                std::move(osChunkSize)};
             linesDataArrays[DimsToString(dims, osSameDimGroup)].push_back(
                 std::move(line));
         }
