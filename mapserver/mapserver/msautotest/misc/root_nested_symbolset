@@ -1,4 +1,0 @@
-SYMBOLSET
-  INCLUDE 'empty_symbolset'
-  INCLUDE '../renderers/symbolset'
-END

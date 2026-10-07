@@ -1,1 +1,0 @@
-Argument -d needs 2 space separated arguments.

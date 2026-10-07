@@ -118,6 +118,7 @@ bool GDALRasterClipAlgorithm::RunStep(GDALPipelineStepRunContext &)
         CPLStringList aosOptions;
         aosOptions.AddString("-of");
         aosOptions.AddString("VRT");
+        aosOptions.AddString("--invoked-from-gdal-algorithm");
 
         aosOptions.AddString("-srcwin");
         aosOptions.AddString(CPLSPrintf("%d", m_window[0]));
@@ -185,6 +186,7 @@ bool GDALRasterClipAlgorithm::RunStep(GDALPipelineStepRunContext &)
     CPLStringList aosOptions;
     aosOptions.AddString("-of");
     aosOptions.AddString("VRT");
+    aosOptions.AddString("--invoked-from-gdal-algorithm");
 
     OGREnvelope env;
     poClipGeom->getEnvelope(&env);
@@ -201,10 +203,10 @@ bool GDALRasterClipAlgorithm::RunStep(GDALPipelineStepRunContext &)
     if (poClipGeom->IsRectangle() && !m_addAlpha && !bBottomUpRaster)
     {
         aosOptions.AddString("-projwin");
-        aosOptions.AddString(CPLSPrintf("%.17g", env.MinX));
-        aosOptions.AddString(CPLSPrintf("%.17g", env.MaxY));
-        aosOptions.AddString(CPLSPrintf("%.17g", env.MaxX));
-        aosOptions.AddString(CPLSPrintf("%.17g", env.MinY));
+        aosOptions.AddString(env.MinX);
+        aosOptions.AddString(env.MaxY);
+        aosOptions.AddString(env.MaxX);
+        aosOptions.AddString(env.MinY);
 
         auto poClipGeomSRS = poClipGeom->getSpatialReference();
         if (poClipGeomSRS)
@@ -306,16 +308,14 @@ bool GDALRasterClipAlgorithm::RunStep(GDALPipelineStepRunContext &)
                 gt.yscale;
 
         aosOptions.AddString("-te");
-        aosOptions.AddString(CPLSPrintf("%.17g", dfMinX));
-        aosOptions.AddString(
-            CPLSPrintf("%.17g", bBottomUpRaster ? dfMaxY : dfMinY));
-        aosOptions.AddString(CPLSPrintf("%.17g", dfMaxX));
-        aosOptions.AddString(
-            CPLSPrintf("%.17g", bBottomUpRaster ? dfMinY : dfMaxY));
+        aosOptions.AddString(dfMinX);
+        aosOptions.AddString(bBottomUpRaster ? dfMaxY : dfMinY);
+        aosOptions.AddString(dfMaxX);
+        aosOptions.AddString(bBottomUpRaster ? dfMinY : dfMaxY);
 
         aosOptions.AddString("-tr");
-        aosOptions.AddString(CPLSPrintf("%.17g", gt.xscale));
-        aosOptions.AddString(CPLSPrintf("%.17g", std::fabs(gt.yscale)));
+        aosOptions.AddString(gt.xscale);
+        aosOptions.AddString(std::fabs(gt.yscale));
 
         GDALWarpAppOptions *psOptions =
             GDALWarpAppOptionsNew(aosOptions.List(), nullptr);

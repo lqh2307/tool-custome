@@ -576,6 +576,15 @@ public:
   }
 #endif
 
+#ifdef SWIGJAVA
+%apply (int* pnList, int** ppListOut) {(int* nvalues, int **confidence_values)};
+  OSRSpatialReferenceShadow** FindMatches( char** options, int* nvalues, int** confidence_values )
+  {
+       return (OSRSpatialReferenceShadow**) OSRFindMatches(self, options, nvalues, confidence_values);
+  }
+%clear (int* nvalues, int **confidence_values);
+#endif
+
   OGRErr SetProjection( char const *arg ) {
     return OSRSetProjection( self, arg );
   }
@@ -1063,6 +1072,10 @@ public:
     return OSRImportFromMICoordSys( self, pszCoordSys );
   }
 
+  OGRErr ImportFromISISPVL( char const *pszPVLMappingGroup ) {
+    return OSRImportFromISISPVL( self, pszPVLMappingGroup );
+  }
+
 %apply Pointer NONNULL {const char* const *papszLines};
 %apply (char **options) { (const char* const *papszLines) };
   OGRErr ImportFromOzi( const char* const *papszLines ) {
@@ -1262,6 +1275,20 @@ public:
   ~OSRCoordinateTransformationShadow() {
     OCTDestroyCoordinateTransformation( self );
   }
+
+#ifdef SWIGJAVA 
+   %newobject GetSource;
+   OSRSpatialReferenceShadow* GetSource() {
+    OGRSpatialReferenceH srs = OCTGetSourceCS(self);
+    return (OSRSpatialReferenceShadow*) (srs ? OSRClone(srs) : NULL);
+  }
+
+   %newobject GetTarget;
+   OSRSpatialReferenceShadow* GetTarget() {
+    OGRSpatialReferenceH srs = OCTGetTargetCS(self);
+    return (OSRSpatialReferenceShadow*) (srs ? OSRClone(srs) : NULL);
+  }
+#endif
 
   %newobject GetInverse;
   OSRCoordinateTransformationShadow* GetInverse() {

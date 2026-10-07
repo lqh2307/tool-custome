@@ -1,4 +1,0 @@
-Content-Type: application/json
-Status: 404
-
-{"code":"NotFound","description":"Invalid collection."}

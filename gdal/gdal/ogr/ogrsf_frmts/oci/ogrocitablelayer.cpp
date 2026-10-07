@@ -176,7 +176,7 @@ OGRFeatureDefn *OGROCITableLayer::ReadTableDefinition(const char *pszTable)
                              OCI_OTYPE_NAME, OCI_DEFAULT, OCI_PTYPE_TABLE,
                              poSession->hDescribe);
 
-    if (poSession->Failed(nStatus, "OCIDescribeAny"))
+    if (nStatus != OCI_SUCCESS && nStatus != OCI_SUCCESS_WITH_INFO)
     {
         CPLErrorReset();
 
@@ -188,7 +188,7 @@ OGRFeatureDefn *OGROCITableLayer::ReadTableDefinition(const char *pszTable)
                                  OCI_OTYPE_NAME, OCI_DEFAULT, OCI_PTYPE_VIEW,
                                  poSession->hDescribe);
 
-        if (poSession->Failed(nStatus, "OCIDescribeAny"))
+        if (nStatus != OCI_SUCCESS && nStatus != OCI_SUCCESS_WITH_INFO)
         {
             CPLErrorReset();
 
@@ -200,7 +200,7 @@ OGRFeatureDefn *OGROCITableLayer::ReadTableDefinition(const char *pszTable)
                 static_cast<ub4>(osQuotedTableName.length()), OCI_OTYPE_NAME,
                 OCI_DEFAULT, OCI_PTYPE_TABLE, poSession->hDescribe);
 
-            if (poSession->Failed(nStatus, "OCIDescribeAny"))
+            if (nStatus != OCI_SUCCESS && nStatus != OCI_SUCCESS_WITH_INFO)
             {
                 CPLErrorReset();
 
@@ -1454,7 +1454,7 @@ OGRErr OGROCITableLayer::IGetExtent(int iGeomField, OGREnvelope *psExtent,
 /*                           TestCapability()                           */
 /************************************************************************/
 
-int OGROCITableLayer::TestCapability(const char *pszCap) const
+bool OGROCITableLayer::TestCapability(const char *pszCap) const
 
 {
     if (EQUAL(pszCap, OLCSequentialWrite) || EQUAL(pszCap, OLCRandomWrite))

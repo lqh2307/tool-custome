@@ -56,9 +56,9 @@ def test_pcidsk_2():
 # Test copying of georeferencing and projection.
 
 
-def test_pcidsk_3():
+def test_pcidsk_3(tmp_path):
 
-    tst = gdaltest.GDALTest("PCIDSK", "pcidsk/utm.pix", 1, 39576)
+    tst = gdaltest.GDALTest("PCIDSK", "pcidsk/utm.pix", 1, 39576, tmpdir=tmp_path)
 
     tst.testCreateCopy(check_gt=1, check_srs=1)
 
@@ -558,7 +558,9 @@ def test_pcidsk_online_1():
         "irvine_gcp2.pix",
     )
 
-    ds = gdal.Open("tmp/cache/irvine_gcp2.pix")
+    tmp_dir = gdaltest.get_cache_dir()
+
+    ds = gdal.Open(f"{tmp_dir}/irvine_gcp2.pix")
 
     band = ds.GetRasterBand(6)
 
@@ -679,9 +681,9 @@ def test_pcidsk_online_1():
 # Read test of a PCIDSK TILED version 1 file.
 
 
-def test_pcidsk_tile_v1():
+def test_pcidsk_tile_v1(tmp_path):
 
-    tst = gdaltest.GDALTest("PCIDSK", "pcidsk/tile_v1.1.pix", 1, 49526)
+    tst = gdaltest.GDALTest("PCIDSK", "pcidsk/tile_v1.1.pix", 1, 49526, tmpdir=tmp_path)
 
     tst.testCreateCopy(check_gt=1, check_srs=1)
 
@@ -701,9 +703,9 @@ def test_pcidsk_tile_v1_overview():
 # Read test of a PCIDSK TILED version 2 file.
 
 
-def test_pcidsk_tile_v2():
+def test_pcidsk_tile_v2(tmp_path):
 
-    tst = gdaltest.GDALTest("PCIDSK", "pcidsk/tile_v2.pix", 1, 49526)
+    tst = gdaltest.GDALTest("PCIDSK", "pcidsk/tile_v2.pix", 1, 49526, tmpdir=tmp_path)
 
     return tst.testCreateCopy(check_gt=1, check_srs=1)
 
@@ -729,15 +731,17 @@ def test_pcidsk_online_rpc():
         "https://github.com/OSGeo/gdal/files/6822835/pix-test.zip", "pix-test.zip"
     )
 
+    tmp_dir = gdaltest.get_cache_dir()
+
     try:
-        os.stat("tmp/cache/demo.PIX")
+        os.stat(f"{tmp_dir}/demo.PIX")
     except OSError:
         try:
-            gdaltest.unzip("tmp/cache", "tmp/cache/pix-test.zip")
+            gdaltest.unzip(tmp_dir, f"{tmp_dir}/pix-test.zip")
         except Exception:
             pytest.skip()
 
-    ds = gdal.Open("tmp/cache/demo.PIX")
+    ds = gdal.Open(f"{tmp_dir}/demo.PIX")
     assert ds.GetMetadata("RPC") is not None
 
 
@@ -771,3 +775,36 @@ def test_pcidsk_web_mercator(tmp_path):
     expected_srs = osr.SpatialReference()
     expected_srs.ImportFromEPSG(3857)
     assert ds.GetSpatialRef().IsSame(expected_srs)
+
+
+###############################################################################
+# Test that a tiled channel whose image header pixel type disagrees with the
+# tile layer data type is rejected instead of overflowing the block buffer.
+
+
+@gdaltest.enable_exceptions()
+def test_pcidsk_tiled_type_mismatch(tmp_path):
+
+    filename = str(tmp_path / "mismatch.pix")
+    gdal.Translate(
+        filename,
+        "data/byte.tif",
+        options="-of PCIDSK -ot Float32 -co INTERLEAVING=TILED -co TILESIZE=16",
+    )
+
+    # The pixel type is stored in the image band header as an 8-byte field at
+    # offset 160, and independently as the tile layer data type. Change only the
+    # image header type from 32R (Float32, 4 bytes) to 8U (Byte, 1 byte); the
+    # block buffer is then sized for 1 byte per pixel while the tile still holds
+    # 4 bytes per pixel.
+    data = bytearray(open(filename, "rb").read())
+    assert data.count(b"32R     ") == 1
+    pos = data.index(b"32R     ")
+    data[pos : pos + 8] = b"8U      "
+    open(filename, "wb").write(data)
+
+    with pytest.raises(
+        Exception,
+        match=r"Tiled channel .* data type .* does not match image header pixel type",
+    ):
+        gdal.Open(filename)

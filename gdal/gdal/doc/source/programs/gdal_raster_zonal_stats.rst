@@ -72,6 +72,8 @@ Supported stats
       - Cell center y-coordinate for the cell containing the maximum value intersected by the polygon. The center of this cell may or may not be inside the polygon.
     * - mean
       - Mean value of cells that intersect the polygon, weighted by the percent of each cell that is covered.
+    * - median
+      - Median value of cells that intersect the polygon. Does not take into account the percent of each cell that is covered; cannot be used with :option:`--pixels=fractional`.
     * - min
       - Minimum value of cells that intersect the polygon, not taking coverage fractions or weighting raster values into account.
     * - min_center_x
@@ -141,7 +143,7 @@ Program-Specific Options
 
 .. option:: --strategy <STRATEGY>
 
-   Specifies the the processing strategy (``raster`` or ``feature``), when vector zones are used.
+   Specifies the processing strategy (``raster`` or ``feature``), when vector zones are used.
    In the default strategy (``--strategy feature``), GDAL will iterate over the features in the zone dataset, read the corresponding pixels from the raster, and write the statistics for that feature. This avoids the need to read the entire feature dataset into memory at once, but may cause the same pixels to be read multiple times if the polygon features are large or not ordered spatially. If ``--strategy raster`` is used, GDAL will iterate over chunks of the raster dataset, find corresponding polygon zones, and update the statistics for those features. (The size of the raster chunks can be controlled using :option:``--chunk-size``.) This ensures that raster pixels are only read once, but may cause the same features to be processed multiple times.
 
 .. option:: --weights <WEIGHTS>
@@ -269,3 +271,47 @@ Examples
             --output-crs EPSG:4326 ! \
           write out.gpkg
 
+.. example::
+   :title: Reproject zones to match raster
+
+   This example identifies the most command land use in each town in Chittenden County, Vermont.
+   Land cover is taken from an extract of the U.S. national land cover dataset for Vermont, and
+   town boundaries are taken from a TIGER shapefile. Both of these datasets can be accessed
+   remotely using GDAL virtual file systems.
+
+   Because the town boundaries are in a different spatial reference system from the land cover,
+   they must first be reprojected to match.
+
+   .. code-block:: console
+
+       $ gdal pipeline --config AWS_NO_SIGN_REQUEST=YES ! \
+             read /vsizip/vsicurl/https://www2.census.gov/geo/tiger/TIGER2025/COUSUB/tl_2025_50_cousub.zip ! \
+             filter --where "COUNTYFP='007'" ! \
+             reproject --like /vsis3/vtopendata-prd/Landcover/Annual_NLCD_LndCov_2024_Vermont.tif ! \
+             zonal-stats --input /vsis3/vtopendata-prd/Landcover/Annual_NLCD_LndCov_2024_Vermont.tif --zones _PIPE_ --include-field NAME  --stat mode ! \
+             write --output /vsistdout/ --output-format CSV
+
+       NAME,mode
+       Richmond,41
+       Underhill,41
+       Westford,41
+       Winooski,23
+       Buels,41
+       Essex,43
+       Colchester,11
+       St. George,43
+       Hinesburg,41
+       Huntington,41
+       Jericho,41
+       Bolton,41
+       Charlotte,81
+       Essex Junction,22
+       Milton,41
+       Burlington,11
+       Shelburne,11
+       South Burlington,11
+       Williston,81
+
+
+.. spelling:word-list::
+        Chittenden

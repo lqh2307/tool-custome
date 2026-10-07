@@ -73,9 +73,21 @@ $(info - library path is ${LUA_LIBS})
 prefix = /usr/local
 
 MANPREFIX := /usr/share/man
-TM_VERSION ?= $(shell git describe --tags --abbrev=0)
+TM_BASE_VERSION := v$(shell sed -n '1p' VERSION)
+TM_GIT_SHA := $(shell git rev-parse --short=12 HEAD 2>/dev/null)
+TM_GIT_TAG := $(shell git describe --exact-match --tags HEAD 2>/dev/null)
+TM_GIT_DIRTY := $(shell if git diff-index --quiet HEAD -- 2>/dev/null; then :; elif test $$? -eq 1; then printf '.dirty'; fi)
+ifeq ($(TM_GIT_SHA),)
+  TM_VERSION ?= $(TM_BASE_VERSION)+nogit
+else ifeq ($(TM_GIT_TAG)$(TM_GIT_DIRTY),$(TM_BASE_VERSION))
+  TM_VERSION ?= $(TM_BASE_VERSION)
+else
+  TM_VERSION ?= $(TM_BASE_VERSION)+g$(TM_GIT_SHA)$(TM_GIT_DIRTY)
+endif
 CXXFLAGS ?= -O3 -Wall -Wno-unknown-pragmas -Wno-sign-compare -std=c++14 -pthread -fPIE -DTM_VERSION=$(TM_VERSION) $(CONFIG)
 CFLAGS ?= -O3 -Wall -Wno-unknown-pragmas -Wno-sign-compare -std=c99 -fPIE -DTM_VERSION=$(TM_VERSION) $(CONFIG)
+DEPFLAGS := -MD -MP
+DEPS := $(wildcard src/*.d src/external/*.d src/external/libdeflate/lib/*.d src/external/libdeflate/lib/*/*.d server/*.d test/*.d)
 BOOST_SYSTEM_LIB := $(shell printf 'int main(){return 0;}\n' | $(CXX) -x c++ - -o /tmp/tilemaker-boost-system-check -lboost_system >/dev/null 2>&1 && echo -lboost_system; rm -f /tmp/tilemaker-boost-system-check)
 LIB := -L$(PLATFORM_PATH)/lib -Wl,-rpath,$(PLATFORM_PATH)/lib $(LUA_LIBS) -lboost_program_options -lsqlite3 -lboost_filesystem $(BOOST_SYSTEM_LIB) -lshp -pthread
 INC := -I$(PLATFORM_PATH)/include -isystem ./include -I./src $(LUA_CFLAGS)
@@ -87,8 +99,10 @@ all: tilemaker server
 
 tilemaker: \
 	src/attribute_store.o \
+	src/config_validator.o \
 	src/coordinates_geom.o \
 	src/coordinates.o \
+	src/declutter.o \
 	src/external/streamvbyte_decode.o \
 	src/external/streamvbyte_encode.o \
 	src/external/streamvbyte_zigzag.o \
@@ -141,6 +155,7 @@ tilemaker: \
 test: \
 	test_append_vector \
 	test_attribute_store \
+	test_config_validator \
 	test_deque_map \
 	test_helpers \
 	test_options_parser \
@@ -164,6 +179,18 @@ test_attribute_store: \
 	src/pooled_string.o \
 	test/attribute_store.test.o
 	$(CXX) $(CXXFLAGS) -o test.attribute_store $^ $(INC) $(LIB) $(LDFLAGS) && ./test.attribute_store
+
+test_config_validator: \
+	src/config_validator.o \
+	test/config_validator.test.o
+	$(CXX) $(CXXFLAGS) -o test.config_validator $^ $(INC) $(LIB) $(LDFLAGS) && ./test.config_validator
+
+src/config_schema.h: resources/config-schema.json
+	printf '#ifndef _CONFIG_SCHEMA_H\n#define _CONFIG_SCHEMA_H\n\nstatic const char* CONFIG_SCHEMA = R"TMCONFIGSCHEMA(\n' > $@
+	cat $< >> $@
+	printf '\n)TMCONFIGSCHEMA";\n\n#endif //_CONFIG_SCHEMA_H\n' >> $@
+
+src/config_validator.o: src/config_schema.h
 
 test_deque_map: \
 	test/deque_map.test.o
@@ -256,10 +283,12 @@ server: \
 	$(CXX) $(CXXFLAGS) -o tilemaker-server $^ $(INC) $(LIB) $(LDFLAGS)
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -o $@ -c $< $(INC)
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $< $(INC)
 
 %.o: %.c
-	$(CC) $(CFLAGS) -o $@ -c $< $(INC)
+	$(CC) $(CFLAGS) $(DEPFLAGS) -o $@ -c $< $(INC)
+
+-include $(DEPS)
 
 install:
 	install -m 0755 -d $(DESTDIR)$(prefix)/bin/
@@ -269,6 +298,7 @@ install:
 	@install docs/man/tilemaker.1 ${DESTDIR}${MANPREFIX}/man1/ || true
 
 clean:
-	rm -f tilemaker tilemaker-server src/*.o src/external/*.o src/external/libdeflate/lib/*.o src/external/libdeflate/lib/*/*.o include/*.o include/*.pb.h server/*.o test/*.o
+	rm -f tilemaker tilemaker-server src/*.o src/external/*.o src/external/libdeflate/lib/*.o src/external/libdeflate/lib/*/*.o include/*.o include/*.pb.h server/*.o test/*.o src/config_schema.h
+	rm -f src/*.d src/external/*.d src/external/libdeflate/lib/*.d src/external/libdeflate/lib/*/*.d server/*.d test/*.d
 
 .PHONY: install

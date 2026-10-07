@@ -14,11 +14,11 @@
 ###############################################################################
 
 import math
-import os
 import shutil
 import struct
 import sys
 
+import gdaltest
 import pytest
 
 from osgeo import gdal
@@ -342,9 +342,11 @@ def test_histogram_2(utmsmall_tif):
 
 
 @pytest.mark.require_driver("AAIGRID")
-def test_histogram_3():
+def test_histogram_3(tmp_vsimem):
 
-    ds = gdal.Open("data/int32_withneg.grd")
+    gdal.CopyFile("data/int32_withneg.grd", tmp_vsimem / "test.grd")
+
+    ds = gdal.Open(tmp_vsimem / "test.grd")
     hist = ds.GetRasterBand(1).GetHistogram(
         buckets=21, max=100, min=-100, include_out_of_range=1, approx_ok=0
     )
@@ -359,9 +361,11 @@ def test_histogram_3():
 
 
 @pytest.mark.require_driver("AAIGRID")
-def test_histogram_4():
+def test_histogram_4(tmp_vsimem):
 
-    ds = gdal.Open("data/int32_withneg.grd")
+    gdal.CopyFile("data/int32_withneg.grd", tmp_vsimem / "test.grd")
+
+    ds = gdal.Open(tmp_vsimem / "test.grd")
     hist = ds.GetRasterBand(1).GetHistogram(
         buckets=21, max=100, min=-100, include_out_of_range=0, approx_ok=0
     )
@@ -371,8 +375,6 @@ def test_histogram_4():
     assert hist == exp_hist, "did not get expected histogram."
 
     ds = None
-
-    gdal.Unlink("data/int32_withneg.grd.aux.xml")
 
 
 ###############################################################################
@@ -658,14 +660,13 @@ def test_histogram_5(utmsmall_tif):
 
 
 @pytest.mark.require_driver("JPEG")
-def test_histogram_6():
+def test_histogram_6(tmp_vsimem):
 
-    shutil.copy("../gdrivers/data/jpeg/albania.jpg", "tmp/albania.jpg")
-    ds = gdal.Open("tmp/albania.jpg")
+    gdal.CopyFile("../gdrivers/data/jpeg/albania.jpg", tmp_vsimem / "albania.jpg")
+    ds = gdal.Open(tmp_vsimem / "albania.jpg")
     hist = ds.GetRasterBand(1).GetDefaultHistogram(force=0)
     assert hist is None, "did not get expected histogram."
     ds = None
-    os.unlink("tmp/albania.jpg")
 
 
 ###############################################################################
@@ -762,3 +763,23 @@ def test_histogram_min_equal_max():
 
     ds = gdal.GetDriverByName("MEM").Create("", 1, 1, 1, gdal.GDT_Int16)
     assert ds.GetRasterBand(1).GetDefaultHistogram() == (-0.5, 0.5, 1, [1])
+
+
+###############################################################################
+
+
+def test_histogram_int_large_nodata():
+
+    gdaltest.importorskip_gdal_array()
+    np = pytest.importorskip("numpy")
+
+    data = np.array([[0, 4000000005], [4000000000, 4000000030]])
+
+    ds = gdal.GetDriverByName("MEM").Create("", 2, 2, 1, gdal.GDT_UInt32)
+    ds.GetRasterBand(1).WriteArray(data)
+    ds.GetRasterBand(1).SetNoDataValue(4000000000)
+
+    hist = ds.GetRasterBand(1).GetDefaultHistogram()
+
+    # raster has 3 valid pixels
+    assert np.array(hist[3]).sum() == 3

@@ -1,5 +1,4 @@
 *
-!mapserver
 !osmium-tool
 !tilemaker
 !gdal

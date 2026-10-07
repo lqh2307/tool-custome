@@ -190,12 +190,16 @@ bool GDALAbstractPipelineAlgorithm::CheckFirstAndLastStep(
         for (const auto &stepName : GetStepRegistry().GetNames())
         {
             auto alg = GetStepAlg(stepName);
-            if (alg && alg->CanBeLastStep() &&
-                stepName != GDALRasterWriteAlgorithm::NAME)
+            if (alg && alg->CanBeLastStep())
             {
-                setLastStepNames.insert(CPLString(stepName)
-                                            .replaceAll(RASTER_SUFFIX, "")
-                                            .replaceAll(VECTOR_SUFFIX, ""));
+                const CPLString nameWithoutSuffix =
+                    CPLString(stepName)
+                        .replaceAll(RASTER_SUFFIX, "")
+                        .replaceAll(VECTOR_SUFFIX, "");
+                if (nameWithoutSuffix != GDALRasterWriteAlgorithm::NAME)
+                {
+                    setLastStepNames.insert(nameWithoutSuffix);
+                }
             }
         }
         std::vector<std::string> lastStepNames{GDALRasterWriteAlgorithm::NAME};
@@ -741,7 +745,7 @@ bool GDALAbstractPipelineAlgorithm::ParseCommandLineArguments(
                 if (!subAlg)
                 {
                     ReportError(CE_Failure, CPLE_AppDefined,
-                                "'%s' is a unknown sub-algorithm of '%s'",
+                                "'%s' is an unknown sub-algorithm of '%s'",
                                 arg.c_str(), curStep.alg->GetName().c_str());
                     return false;
                 }

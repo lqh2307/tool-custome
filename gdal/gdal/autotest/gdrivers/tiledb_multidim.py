@@ -17,6 +17,7 @@ import math
 import os
 import shutil
 
+import gdaltest
 import pytest
 
 from osgeo import gdal, osr
@@ -24,9 +25,9 @@ from osgeo import gdal, osr
 pytestmark = pytest.mark.require_driver("TileDB")
 
 
-def test_tiledb_multidim_basic():
+def test_tiledb_multidim_basic(tmp_path):
 
-    filename = "tmp/test_tiledb_multidim_basic.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def create():
 
@@ -202,6 +203,60 @@ def test_tiledb_multidim_basic():
 ###############################################################################
 
 
+def test_tiledb_multidim_mixed_fixed_and_variable_sized_attributes(tmp_path):
+    """Variable-size attributes do not hide fixed-size raster attributes."""
+
+    tiledb = pytest.importorskip("tiledb")
+    np = pytest.importorskip("numpy")
+    filename = str(tmp_path / "out.tiledb")
+    domain = tiledb.Domain(
+        tiledb.Dim(name="X", domain=(0, 3), tile=4, dtype=np.uint64),
+        tiledb.Dim(name="Y", domain=(0, 3), tile=4, dtype=np.uint64),
+    )
+    schema = tiledb.ArraySchema(
+        domain=domain,
+        attrs=(
+            tiledb.Attr(name="Z", dtype=np.float64, var=True),
+            tiledb.Attr(name="m_Z_mean", dtype=np.float32, fill=-9999.0),
+        ),
+        sparse=False,
+    )
+    tiledb.DenseArray.create(filename, schema)
+    with tiledb.DenseArray(filename, "w") as array:
+        z = np.empty((4, 4), dtype=object)
+        for x in range(4):
+            for y in range(4):
+                z[x, y] = np.array([x * 10 + y], dtype=np.float64)
+        array[:] = {
+            "Z": z,
+            "m_Z_mean": np.arange(16, dtype=np.float32).reshape(4, 4),
+        }
+    skipped_name = os.path.basename(filename) + ".Z"
+    debug_messages = []
+
+    def error_handler(error_class, error_number, message):
+        if error_class == gdal.CE_Debug:
+            debug_messages.append(message)
+
+    with gdal.config_option("CPL_DEBUG", "TileDB"), gdaltest.error_handler(
+        error_handler
+    ):
+        ds = gdal.Open(filename, gdal.OF_MULTIDIM_RASTER)
+
+    root_group = ds.GetRootGroup()
+    mean_name = os.path.basename(filename) + ".m_Z_mean"
+    assert root_group.GetMDArrayNames() == [mean_name]
+    assert debug_messages == [
+        f"TileDB: Skipping unsupported variable-size attribute '{skipped_name}'"
+    ]
+    mean = root_group.OpenMDArray(mean_name)
+    assert [dim.GetSize() for dim in mean.GetDimensions()] == [4, 4]
+    assert mean.GetDataType().GetNumericDataType() == gdal.GDT_Float32
+
+
+###############################################################################
+
+
 @pytest.mark.parametrize(
     "gdal_data_type",
     [
@@ -221,9 +276,9 @@ def test_tiledb_multidim_basic():
         gdal.GDT_CFloat64,
     ],
 )
-def test_tiledb_multidim_array_data_types(gdal_data_type):
+def test_tiledb_multidim_array_data_types(tmp_path, gdal_data_type):
 
-    filename = "tmp/test_tiledb_multidim_array_data_types.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def create():
 
@@ -258,9 +313,9 @@ def test_tiledb_multidim_array_data_types(gdal_data_type):
 ###############################################################################
 
 
-def test_tiledb_multidim_array_nodata():
+def test_tiledb_multidim_array_nodata(tmp_path):
 
-    filename = "tmp/test_tiledb_multidim_array_nodata.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
 
@@ -293,11 +348,9 @@ def test_tiledb_multidim_array_nodata():
 ###############################################################################
 
 
-def test_tiledb_multidim_array_nodata_cannot_be_set_after_finalize():
+def test_tiledb_multidim_array_nodata_cannot_be_set_after_finalize(tmp_path):
 
-    filename = (
-        "tmp/test_tiledb_multidim_array_nodata_cannot_be_set_after_finalize.tiledb"
-    )
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
 
@@ -334,9 +387,9 @@ def test_tiledb_multidim_array_nodata_cannot_be_set_after_finalize():
 ###############################################################################
 
 
-def test_tiledb_multidim_array_blocksize():
+def test_tiledb_multidim_array_blocksize(tmp_path):
 
-    filename = "tmp/test_tiledb_multidim_array_blocksize.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
 
@@ -371,9 +424,9 @@ def test_tiledb_multidim_array_blocksize():
 ###############################################################################
 
 
-def test_tiledb_multidim_array_compression():
+def test_tiledb_multidim_array_compression(tmp_path):
 
-    filename = "tmp/test_tiledb_multidim_array_compression.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
 
@@ -407,9 +460,9 @@ def test_tiledb_multidim_array_compression():
 ###############################################################################
 
 
-def test_tiledb_multidim_array_same_name_as_dim():
+def test_tiledb_multidim_array_same_name_as_dim(tmp_path):
 
-    filename = "tmp/test_tiledb_multidim_array_same_name_as_dim.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
 
@@ -438,9 +491,9 @@ def test_tiledb_multidim_array_same_name_as_dim():
 ###############################################################################
 
 
-def test_tiledb_multidim_array_read_write():
+def test_tiledb_multidim_array_read_write(tmp_path):
 
-    filename = "tmp/test_tiledb_multidim_array_read_write.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
 
@@ -524,9 +577,11 @@ def test_tiledb_multidim_array_read_write():
 
 
 @pytest.mark.parametrize("epsg_code,axis_mapping", [(4326, [1, 2]), (32631, [2, 1])])
-def test_tiledb_multidim_array_read_dim_label_and_spatial_ref(epsg_code, axis_mapping):
+def test_tiledb_multidim_array_read_dim_label_and_spatial_ref(
+    tmp_path, epsg_code, axis_mapping
+):
 
-    filename = "tmp/test_tiledb_multidim_array_read_dim_label.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
 
@@ -617,9 +672,9 @@ def test_tiledb_multidim_array_read_dim_label_and_spatial_ref(epsg_code, axis_ma
 ###############################################################################
 
 
-def test_tiledb_multidim_array_read_gdal_raster_classic():
+def test_tiledb_multidim_array_read_gdal_raster_classic(tmp_path):
 
-    filename = "tmp/test_tiledb_multidim_array_read_gdal_raster_classic.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
         gdal.Translate(filename, "data/small_world.tif", format="TileDB")
@@ -662,9 +717,9 @@ def test_tiledb_multidim_array_read_gdal_raster_classic():
 ###############################################################################
 
 
-def test_tiledb_multidim_array_read_gdal_raster_classic_interleave_attributes():
+def test_tiledb_multidim_array_read_gdal_raster_classic_interleave_attributes(tmp_path):
 
-    filename = "tmp/test_tiledb_multidim_array_read_gdal_raster_classic_interleave_attributes.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
         gdal.Translate(
@@ -676,7 +731,8 @@ def test_tiledb_multidim_array_read_gdal_raster_classic_interleave_attributes():
         ds = gdal.Open(filename, gdal.OF_MULTIDIM_RASTER)
         rg = ds.GetRootGroup()
         assert rg.GetMDArrayNames() == [
-            filename[len("tmp/") :] + ".TDB_VALUES_%d" % i for i in range(1, 3 + 1)
+            filename[len(str(tmp_path) + "/") :] + ".TDB_VALUES_%d" % i
+            for i in range(1, 3 + 1)
         ]
         ar = rg.OpenMDArray(rg.GetMDArrayNames()[0])
         dims = ar.GetDimensions()
@@ -701,9 +757,9 @@ def test_tiledb_multidim_array_read_gdal_raster_classic_interleave_attributes():
 
 
 @pytest.mark.require_driver("netCDF")
-def test_tiledb_multidim_translate_from_netcdf():
+def test_tiledb_multidim_translate_from_netcdf(tmp_path):
 
-    filename = "tmp/test_tiledb_multidim_translate_from_netcdf.tiledb"
+    filename = str(tmp_path / "out.tiledb")
 
     def test():
         gdal.MultiDimTranslate(

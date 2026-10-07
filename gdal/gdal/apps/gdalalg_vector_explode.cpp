@@ -44,6 +44,7 @@ GDALVectorExplodeAlgorithm::GDALVectorExplodeAlgorithm(bool standaloneStep)
     {
         auto &arg =
             AddArg("field", 0, _("Attribute fields(s) to explode"), &m_fields)
+                .SetDuplicateValuesAllowed(false)
                 .SetMetaVar("FIELD");
 
         SetAutoCompleteFunctionForFieldName(
@@ -57,6 +58,7 @@ GDALVectorExplodeAlgorithm::GDALVectorExplodeAlgorithm(bool standaloneStep)
     {
         auto &arg = AddArg("geometry-field", 0,
                            _("Geometry field(s) to explode"), &m_geomFields)
+                        .SetDuplicateValuesAllowed(false)
                         .SetMetaVar("GEOMETRY-FIELD");
         SetAutoCompleteFunctionForFieldName(arg, nullptr, false, true,
                                             m_inputDataset, {"ALL"});
@@ -252,7 +254,7 @@ class GDALVectorExplodeLayer final : public GDALVectorPipelineOutputLayer
         GDALVectorPipelineOutputLayer::ResetReading();
     }
 
-    int TestCapability(const char *pszCap) const override
+    bool TestCapability(const char *pszCap) const override
     {
         if (EQUAL(pszCap, OLCFastGetExtent) ||
             EQUAL(pszCap, OLCFastGetExtent3D) ||
@@ -422,9 +424,9 @@ class GDALVectorExplodeLayer final : public GDALVectorPipelineOutputLayer
                     }
                     else
                     {
-                        if (iDstFeature > 1 &&
-                            apoOutFeatures.front()->GetGeomFieldRef(
-                                iGeomField) != nullptr)
+                        const OGRGeometry *poSrcSingleGeom =
+                            poSrcFeature->GetGeomFieldRef(iGeomField);
+                        if (iDstFeature > 0 && poSrcSingleGeom != nullptr)
                         {
                             CPLError(
                                 CE_Failure, CPLE_AppDefined,
@@ -437,8 +439,8 @@ class GDALVectorExplodeLayer final : public GDALVectorPipelineOutputLayer
                             return false;
                         }
 
-                        poDstGeom.reset(
-                            poSrcFeature->StealGeometry(iGeomField));
+                        if (poSrcSingleGeom)
+                            poDstGeom.reset(poSrcSingleGeom->clone());
                     }
 
                     poDstFeature->SetGeomField(iGeomField,
@@ -446,22 +448,8 @@ class GDALVectorExplodeLayer final : public GDALVectorPipelineOutputLayer
                 }
                 else
                 {
-                    std::unique_ptr<OGRGeometry> poSrcGeom;
-
-                    if (apoOutFeatures.empty())
-                    {
-                        poSrcGeom.reset(
-                            poSrcFeature->StealGeometry(iGeomField));
-                    }
-                    else
-                    {
-                        poSrcGeom.reset(apoOutFeatures.front()
-                                            ->GetGeomFieldRef(iGeomField)
-                                            ->clone());
-                    }
-
-                    poDstFeature->SetGeomField(iGeomField,
-                                               std::move(poSrcGeom));
+                    poDstFeature->SetGeomField(
+                        iGeomField, poSrcFeature->GetGeomFieldRef(iGeomField));
                 }
             }
 
@@ -537,6 +525,7 @@ bool GDALVectorExplodeAlgorithm::RunStep(GDALPipelineStepRunContext &)
                 *poSrcLayer,
                 std::make_unique<GDALVectorPipelinePassthroughLayer>(
                     *poSrcLayer));
+            continue;
         }
 
         const auto *poLayerDefn = poSrcLayer->GetLayerDefn();

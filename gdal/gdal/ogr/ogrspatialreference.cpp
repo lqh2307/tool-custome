@@ -4224,7 +4224,7 @@ OGRErr OGRSpatialReference::SetFromUserInput(const char *pszDefinition,
         if (strstr(pszDefinition, "datum_ensemble") != nullptr)
         {
             // PROJ < 9.0.1 doesn't like a datum_ensemble whose member have
-            // a unknown id.
+            // an unknown id.
             CPLJSONDocument oCRSDoc;
             if (!oCRSDoc.LoadMemory(pszDefinition))
                 return OGRERR_CORRUPT_DATA;
@@ -5804,6 +5804,40 @@ OGRErr OSRSetCompoundCS(OGRSpatialReferenceH hSRS, const char *pszName,
 
     return ToPointer(hSRS)->SetCompoundCS(pszName, ToPointer(hHorizSRS),
                                           ToPointer(hVertSRS));
+}
+
+/************************************************************************/
+/*                        GetCompoundComponent()                        */
+/************************************************************************/
+
+/**
+ * \brief Get a CRS component from a CompoundCRS
+ *
+ * @param iComponent Index of the CRS component (typically 0 = horizontal, 1 =
+ * vertical)
+ * @return new OGRSpatialReference object, or NULL in case of error.
+ *
+ * @since 3.14
+ */
+
+std::unique_ptr<OGRSpatialReference>
+OGRSpatialReference::GetCompoundComponent(int iComponent) const
+{
+    std::unique_ptr<OGRSpatialReference> poSRS;
+    d->refreshProjObj();
+    d->demoteFromBoundCRS();
+    if (d->m_pjType == PJ_TYPE_COMPOUND_CRS)
+    {
+        auto subCrs =
+            proj_crs_get_sub_crs(d->getPROJContext(), d->m_pj_crs, iComponent);
+        if (subCrs)
+        {
+            poSRS = std::make_unique<OGRSpatialReference>();
+            poSRS->d->setPjCRS(subCrs);
+        }
+    }
+    d->undoDemoteFromBoundCRS();
+    return poSRS;
 }
 
 /************************************************************************/

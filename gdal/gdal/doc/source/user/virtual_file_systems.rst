@@ -290,7 +290,7 @@ of specific file systems such as ``/vsigs/`` to deal with the specifics of
 each cloud provider):
 
 * ``/vsicurl/``: This virtual file system relies heavily on the server's ability
-  to efficiently handle `HTTP range requests <https://en.wikipedia.org/wiki/Byte_serving>`.
+  to efficiently handle `HTTP range requests <https://en.wikipedia.org/wiki/Byte_serving>`__.
   A range request includes a header from the client (GDAL) asking the server to
   return only a specific portion of the resource, defined by start and end
   offsets. This allows most GDAL drivers to consume datasets piece-wise without
@@ -463,7 +463,7 @@ Options can be passed in the filename with the following syntax: ``/vsicurl?[opt
 - use_head=yes/no: whether the HTTP HEAD request can be emitted. Default to YES. Setting this option overrides the behavior of the :config:`CPL_VSIL_CURL_USE_HEAD` configuration option.
 - max_retry=number: default to 0. Setting this option overrides the behavior of the :config:`GDAL_HTTP_MAX_RETRY` configuration option.
 - retry_delay=number_in_seconds: default to 30. Setting this option overrides the behavior of the :config:`GDAL_HTTP_RETRY_DELAY` configuration option.
-- retry_codes=``ALL`` or comma-separated list of HTTP error codes. Setting this option overrides the behavior of the :config:`GDAL_HTTP_RETRY_CODES` configuration option. (GDAL >= 3.10)
+- retry_codes=\ ``ALL`` or comma-separated list of HTTP error codes. Setting this option overrides the behavior of the :config:`GDAL_HTTP_RETRY_CODES` configuration option. (GDAL >= 3.10)
 - list_dir=yes/no: whether an attempt to read the file list of the directory where the file is located should be done. Default to YES.
 - empty_dir=yes/no: whether to disable directory listing and disable logic in drivers to probe for individual side-car files. Default to NO.
 - useragent=value: HTTP UserAgent header
@@ -521,7 +521,7 @@ Starting with GDAL 3.6, the following configuration options control the TCP keep
 
 Starting with GDAL 3.7, the following configuration options control support for SSL client certificates:
 
-- :config:`GDAL_HTTP_SSLCERT` = filename. Filename of the the SSL client certificate. Cf https://curl.se/libcurl/c/CURLOPT_SSLCERT.html
+- :config:`GDAL_HTTP_SSLCERT` = filename. Filename of the SSL client certificate. Cf https://curl.se/libcurl/c/CURLOPT_SSLCERT.html
 - :config:`GDAL_HTTP_SSLCERTTYPE` = string. Format of the SSL certificate: "PEM" or "DER". Cf https://curl.se/libcurl/c/CURLOPT_SSLCERTTYPE.html
 - :config:`GDAL_HTTP_SSLKEY` = filename. Private key file for TLS and SSL client certificate. Cf https://curl.se/libcurl/c/CURLOPT_SSLKEY.html
 - :config:`GDAL_HTTP_KEYPASSWD` = string. Passphrase to private key. Cf https://curl.se/libcurl/c/CURLOPT_KEYPASSWD.html
@@ -913,6 +913,26 @@ The following configuration options are specific to the /vsigs/ handler:
      https://cloud.google.com/storage/docs/xml-api/reference-headers#xgooguserproject)
      to charge for requests against Requester Pays buckets.
 
+.. versionadded:: 3.14
+
+A specific (possibly non-current) object version can be read, for buckets with
+`Object Versioning <https://cloud.google.com/storage/docs/object-versioning>`__
+enabled, by using a query-string syntax for the file name::
+
+    /vsigs/?path=my_bucket/my_object&generation=123456789
+
+The ``path`` key gives the bucket and object, and the ``generation`` key gives
+the generation number (a positive integer) of the version to read. The values
+are URL-decoded, so any reserved characters (such as ``&`` or ``%``) within the
+bucket/object name must be percent-encoded. When ``generation`` is set, requests
+carry a ``generation=<n>`` query parameter so a specific version of the object is
+read instead of the live one. Without this syntax, the live object is read. This
+uses the same query-string file-name convention as the /vsicurl/ file system.
+
+As for /vsicurl/ query-string file names, side-car files (``.aux.xml``, ``.ovr``,
+``.msk``, etc.) are not looked up for this syntax, since their suffix would be
+appended to the query string rather than to the object name.
+
 
 
 Several authentication methods are possible, and are attempted in the following order:
@@ -1028,7 +1048,7 @@ Several authentication methods are possible, and are attempted in the following 
 
     Authentication using Azure Active Directory Workload Identity (using AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_FEDERATED_TOKEN_FILE and AZURE_AUTHORITY_HOST environment variables), typically for Azure Kubernetes, is available since GDAL 3.7.2
 
-3. Starting with GDAL 3.5, the `configuration file <https://github.com/MicrosoftDocs/azure-docs-cli/blob/main/docs-ref-conceptual/azure-cli-configuration.md>` of the "az" command line utility can be used. The following keys of the ``[storage]`` section will be used in the following priority: ``connection_string``, ``account`` + ``key`` or ``account`` + ``sas_token``
+3. Starting with GDAL 3.5, the `configuration file <https://github.com/MicrosoftDocs/azure-docs-cli/blob/main/docs-ref-conceptual/azure-cli-configuration.md>`__ of the "az" command line utility can be used. The following keys of the ``[storage]`` section will be used in the following priority: ``connection_string``, ``account`` + ``key`` or ``account`` + ``sas_token``
 
 Since GDAL 3.1, the :cpp:func:`VSIRename` operation is supported (first doing a copy of the original file and then deleting it)
 

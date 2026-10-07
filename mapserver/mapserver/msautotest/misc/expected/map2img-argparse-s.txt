@@ -1,1 +1,0 @@
-Argument -s needs 2 space separated arguments.

@@ -371,7 +371,8 @@ class netCDFDataset final : public GDALPamDataset
                            driver? */
     char *pszCFProjection;
     const char *pszCFCoordinates;
-    double nCFVersion;
+    int nCFVersionMajor = 1;
+    int nCFVersionMinor = 6;
     bool bSGSupport;
     MultipleLayerBehavior eMultipleLayerBehavior;
     std::vector<netCDFDataset *> apoVectorDatasets;
@@ -477,7 +478,7 @@ class netCDFDataset final : public GDALPamDataset
                           const char *pszAttr) const;
     const char *FetchAttr(int nGroupId, int nVarId, const char *pszAttr) const;
 
-    void ProcessCreationOptions();
+    bool ProcessCreationOptions();
     int DefVarDeflate(int nVarId, bool bChunkingArg = true) const;
     CPLErr AddProjectionVars(bool bDefsOnly, GDALProgressFunc pfnProgress,
                              void *pProgressData);
@@ -573,7 +574,7 @@ class netCDFDataset final : public GDALPamDataset
     CPLErr SetMetadata(CSLConstList papszMD,
                        const char *pszDomain = "") override;
 
-    int TestCapability(const char *pszCap) const override;
+    bool TestCapability(const char *pszCap) const override;
 
     int GetLayerCount() const override
     {
@@ -757,7 +758,7 @@ class netCDFLayer final : public OGRLayer
 
     GIntBig GetFeatureCount(int bForce) override;
 
-    int TestCapability(const char *pszCap) const override;
+    bool TestCapability(const char *pszCap) const override;
 
     using OGRLayer::GetLayerDefn;
     const OGRFeatureDefn *GetLayerDefn() const override;

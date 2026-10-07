@@ -576,8 +576,8 @@ bool VSIDIRS3::IssueListDir()
         }
 
         struct curl_slist *headers =
-            VSICurlSetOptions(hCurlHandle, l_poHandlerHelper->GetURL().c_str(),
-                              aosHTTPOptions.List());
+            poFS->SetOptions(hCurlHandle, l_poHandlerHelper->GetURL().c_str(),
+                             aosHTTPOptions.List());
 
         headers = l_poHandlerHelper->GetCurlHeaders("GET", headers);
         // Disable automatic redirection
@@ -2904,7 +2904,7 @@ int IVSIS3LikeFSHandler::Rmdir(const char *pszDirname)
     VSIStatBufL sStat;
     if (VSIStatL(osDirname.c_str(), &sStat) != 0)
     {
-        CPLDebug(GetDebugKey(), "%s is not a object", pszDirname);
+        CPLDebug(GetDebugKey(), "%s is not an object", pszDirname);
         errno = ENOENT;
         return -1;
     }
@@ -3133,7 +3133,7 @@ int IVSIS3LikeFSHandler::Unlink(const char *pszFilename)
     VSIStatBufL sStat;
     if (VSIStatL(osFilename, &sStat) != 0)
     {
-        CPLDebug(GetDebugKey(), "%s is not a object", pszFilename);
+        CPLDebug(GetDebugKey(), "%s is not an object", pszFilename);
         errno = ENOENT;
         return -1;
     }
@@ -3181,7 +3181,7 @@ int IVSIS3LikeFSHandler::Rename(const char *oldpath, const char *newpath,
     VSIStatBufL sStat;
     if (VSIStatL(osOldPath, &sStat) != 0)
     {
-        CPLDebug(GetDebugKey(), "%s is not a object", oldpath);
+        CPLDebug(GetDebugKey(), "%s is not an object", oldpath);
         errno = ENOENT;
         return -1;
     }

@@ -33,7 +33,15 @@ GDALVectorFilterAlgorithm::GDALVectorFilterAlgorithm(bool standaloneStep)
                                       standaloneStep)
 {
     auto &layerArg = AddActiveLayerArg(&m_activeLayer);
-    AddBBOXArg(&m_bbox);
+    AddBBOXArg(&m_bbox).SetMutualExclusionGroup("bbox-geometry");
+    AddArg("bbox-crs", 0, _("CRS of bounding box filter"), &m_bboxCrs)
+        .SetIsCRSArg()
+        .AddHiddenAlias("bbox_srs");
+    AddArg("geometry", 0, _("Filter geometry (WKT or GeoJSON)"), &m_geometry)
+        .SetMutualExclusionGroup("bbox-geometry");
+    AddArg("geometry-crs", 0, _("CRS of filter geometry"), &m_geometryCrs)
+        .SetIsCRSArg()
+        .AddHiddenAlias("geometry_srs");
     AddArg("where", 0,
            _("Attribute query in a restricted form of the queries used in the "
              "SQL WHERE statement"),
@@ -372,7 +380,7 @@ class GDALVectorFilterAlgorithmLayerChangeExtent final
         }
     }
 
-    int TestCapability(const char *pszCap) const override
+    bool TestCapability(const char *pszCap) const override
     {
         if (EQUAL(pszCap, OLCFastGetExtent))
             return true;
@@ -399,6 +407,14 @@ bool GDALVectorFilterAlgorithm::RunStep(GDALPipelineStepRunContext &ctxt)
 
     const int nLayerCount = poSrcDS->GetLayerCount();
 
+    OGRSpatialReference oBBOX_SRS;
+    if (!m_bboxCrs.empty())
+    {
+        oBBOX_SRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        // Already validated
+        CPL_IGNORE_RET_VAL(oBBOX_SRS.SetFromUserInput(m_bboxCrs.c_str()));
+    }
+
     bool ret = true;
     if (m_bbox.size() == 4)
     {
@@ -412,7 +428,104 @@ bool GDALVectorFilterAlgorithm::RunStep(GDALPipelineStepRunContext &ctxt)
             ret = ret && (poSrcLayer != nullptr);
             if (poSrcLayer && (m_activeLayer.empty() ||
                                m_activeLayer == poSrcLayer->GetDescription()))
-                poSrcLayer->SetSpatialFilterRect(xmin, ymin, xmax, ymax);
+            {
+                const auto poLayerSRS = poSrcLayer->GetSpatialRef();
+                if (poLayerSRS && !oBBOX_SRS.IsEmpty())
+                {
+                    auto poCT = std::unique_ptr<OGRCoordinateTransformation>(
+                        OGRCreateCoordinateTransformation(&oBBOX_SRS,
+                                                          poLayerSRS));
+                    if (!poCT)
+                        return false;
+                    double xMinLayerSRS;
+                    double yMinLayerSRS;
+                    double xMaxLayerSRS;
+                    double yMaxLayerSRS;
+                    if (!poCT->TransformBounds(
+                            xmin, ymin, xmax, ymax, &xMinLayerSRS,
+                            &yMinLayerSRS, &xMaxLayerSRS, &yMaxLayerSRS, 21))
+                    {
+                        ReportError(CE_Failure, CPLE_AppDefined,
+                                    "Bounding box reprojection failed");
+                        return false;
+                    }
+                    poSrcLayer->SetSpatialFilterRect(
+                        xMinLayerSRS, yMinLayerSRS, xMaxLayerSRS, yMaxLayerSRS);
+                }
+                else
+                {
+                    poSrcLayer->SetSpatialFilterRect(xmin, ymin, xmax, ymax);
+                }
+            }
+        }
+    }
+    else if (!m_geometry.empty())
+    {
+        std::unique_ptr<OGRGeometry> poGeom;
+        {
+            CPLErrorStateBackuper oErrorStateBackuper(CPLQuietErrorHandler);
+            auto [poGeomTmp, eErr] =
+                OGRGeometryFactory::createFromWkt(m_geometry.c_str());
+            if (eErr == OGRERR_NONE)
+            {
+                poGeom = std::move(poGeomTmp);
+            }
+            else
+            {
+                poGeom.reset(
+                    OGRGeometryFactory::createFromGeoJson(m_geometry.c_str()));
+                if (poGeom && poGeom->getSpatialReference() == nullptr)
+                {
+                    auto poSRS =
+                        OGRSpatialReferenceRefCountedPtr::makeInstance();
+                    poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+                    CPL_IGNORE_RET_VAL(poSRS->SetFromUserInput("WGS84"));
+                    poGeom->assignSpatialReference(poSRS.get());
+                }
+            }
+        }
+        if (!poGeom)
+        {
+            CPLError(
+                CE_Failure, CPLE_IllegalArg,
+                "Filter geometry is neither a valid WKT or GeoJSON geometry");
+            return false;
+        }
+
+        if (!m_geometryCrs.empty())
+        {
+            auto poSRS = OGRSpatialReferenceRefCountedPtr::makeInstance();
+            poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+            // Validity of CRS already checked by GDALAlgorithm
+            CPL_IGNORE_RET_VAL(poSRS->SetFromUserInput(m_geometryCrs.c_str()));
+            poGeom->assignSpatialReference(poSRS.get());
+        }
+
+        for (int i = 0; i < nLayerCount; ++i)
+        {
+            auto poSrcLayer = poSrcDS->GetLayer(i);
+            ret = ret && (poSrcLayer != nullptr);
+            if (poSrcLayer && (m_activeLayer.empty() ||
+                               m_activeLayer == poSrcLayer->GetDescription()))
+            {
+                const auto poLayerSRS = poSrcLayer->GetSpatialRef();
+                if (poLayerSRS && poGeom->getSpatialReference() &&
+                    !poLayerSRS->IsSame(poGeom->getSpatialReference()))
+                {
+                    std::unique_ptr<OGRGeometry> poGeomClone(poGeom->clone());
+                    if (poGeomClone->transformTo(poLayerSRS) == OGRERR_FAILURE)
+                    {
+                        ReportError(CE_Failure, CPLE_AppDefined,
+                                    "Geometry reprojection failed");
+                        return false;
+                    }
+                    poSrcLayer->SetSpatialFilter(poGeomClone.get());
+                }
+                else
+                {
+                    poSrcLayer->SetSpatialFilter(poGeom.get());
+                }
+            }
         }
     }
 

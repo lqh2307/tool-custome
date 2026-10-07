@@ -373,7 +373,7 @@ static size_t CPLJSONWriteFunction(void *pBuffer, size_t nSize, size_t nMemb,
     if (ctx->pObject != nullptr)
     {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "A complete JSon object had already been parsed before new "
+                 "A complete JSON object had already been parsed before new "
                  "content is appended to it");
         return 0;
     }
@@ -436,7 +436,7 @@ bool CPLJSONDocument::LoadUrl(const std::string & /*osUrl*/,
     enum json_tokener_error jerr;
     if ((jerr = json_tokener_get_error(ctx.pTokener)) != json_tokener_success)
     {
-        CPLError(CE_Failure, CPLE_AppDefined, "JSON error: %s\n",
+        CPLError(CE_Failure, CPLE_AppDefined, "JSON error: %s",
                  json_tokener_error_desc(jerr));
         bResult = false;
     }
@@ -1160,6 +1160,50 @@ GInt64 CPLJSONObject::ToLong(GInt64 nDefault) const
             json_type_int*/ )
         return static_cast<GInt64>(
             json_object_get_int64(TO_JSONOBJ(m_poJsonObject)));
+    return nDefault;
+}
+
+/**
+ * Get value by key.
+ * @param  osName    Key name.
+ * @param  nDefault   Default value.
+ * @return            uint64_t value.
+ *
+ */
+uint64_t CPLJSONObject::GetUInt64(const std::string &osName,
+                                  uint64_t nDefault) const
+{
+    if (!m_osKeyForSet.empty())
+        return nDefault;
+    CPLJSONObject object = GetObj(osName);
+    return object.ToUInt64(nDefault);
+}
+
+/**
+ * Get value.
+ * @param  nDefault   Default value.
+ * @return            uint64_t value.
+ *
+ */
+uint64_t CPLJSONObject::ToUInt64(uint64_t nDefault) const
+{
+    if (!m_osKeyForSet.empty())
+        return nDefault;
+    if( m_poJsonObject /*&& json_object_get_type( TO_JSONOBJ(m_poJsonObject) ) ==
+            json_type_int*/ )
+    {
+#if (!defined(JSON_C_VERSION_NUM)) || (JSON_C_VERSION_NUM < JSON_C_VER_014)
+        // We can't do much better without json_object_get_uint64
+        const double v = json_object_get_double(TO_JSONOBJ(m_poJsonObject));
+        if (v > 0)
+        {
+            return static_cast<uint64_t>(
+                json_object_get_int64(TO_JSONOBJ(m_poJsonObject)));
+        }
+#else
+        return json_object_get_uint64(TO_JSONOBJ(m_poJsonObject));
+#endif
+    }
     return nDefault;
 }
 

@@ -91,6 +91,7 @@ extensions = [
     "sphinxcontrib_programoutput_gdal",
     "sphinxcontrib.spelling",
     "myst_nb",
+    "sphinx_copybutton",
     "sphinx_tabs.tabs",
     "sphinx_toolbox.collapse",
 ]
@@ -108,6 +109,7 @@ exclude_patterns = [
     "gdal_rtd/README.md",
     "user/geometry_validity_examples.rst",
     "programs/nodata_handling_gdaladdo_gdal_translate.rst",
+    "workshop/README.md",
 ]
 
 # Prevents double hyphen (--) to be replaced by Unicode long dash character
@@ -290,6 +292,8 @@ nitpick_ignore_regex = [
     # Deprecated classes
     (".*", "classOGRDataSource"),
     (".*", "classOGRSFDriver"),
+    # Public class referenced by importFromISISPVL but not in the API doc tree
+    (".*", "classCPLJSONObject"),
     # Internal GDAL types
     (".*", "classAxisMappingCoordinateTransformation"),
     (".*", "classCompositeCT"),
@@ -808,6 +812,13 @@ man_pages = [
         1,
     ),
     (
+        "programs/gdal_raster_shift_longitude",
+        "gdal-shift-longitude",
+        "Shift the longitude values of a raster dataset",
+        [author_dbaston],
+        1,
+    ),
+    (
         "programs/gdal_raster_sieve",
         "gdal-raster-sieve",
         "Remove small raster polygons",
@@ -948,6 +959,13 @@ man_pages = [
         1,
     ),
     (
+        "programs/gdal_vector_compare",
+        "gdal-vector-compare",
+        "Compare two vector datasets",
+        [author_evenr],
+        1,
+    ),
+    (
         "programs/gdal_vector_concat",
         "gdal-vector-concat",
         "Concatenate vector datasets",
@@ -1053,14 +1071,14 @@ man_pages = [
         1,
     ),
     (
-        "programs/gdal_vector_concave-hull",
+        "programs/gdal_vector_concave_hull",
         "gdal-vector-concave-hull",
         "Compute the concave hull of geometries of a vector dataset",
         [author_dbaston],
         1,
     ),
     (
-        "programs/gdal_vector_convex-hull",
+        "programs/gdal_vector_convex_hull",
         "gdal-vector-convex-hull",
         "Compute the convex hull of geometries of a vector dataset",
         [author_dbaston],
@@ -1637,6 +1655,11 @@ spelling_word_list_filename = ["spelling_wordlist.txt"]
 nb_mime_priority_overrides = [
     ("spelling", "text/plain", 0),
 ]
+
+# -- copybutton -----------------------------------------------
+
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+copybutton_prompt_is_regexp = True
 
 # -- copy data files -----------------------------------------------------
 

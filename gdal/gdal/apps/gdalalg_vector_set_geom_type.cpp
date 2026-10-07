@@ -95,7 +95,7 @@ class GDALVectorSetGeomTypeAlgorithmLayer final
         return OGRLayer::GetFeatureCount(bForce);
     }
 
-    int TestCapability(const char *pszCap) const override
+    bool TestCapability(const char *pszCap) const override
     {
         if (EQUAL(pszCap, OLCRandomRead) || EQUAL(pszCap, OLCCurveGeometries) ||
             EQUAL(pszCap, OLCMeasuredGeometries) ||
@@ -314,6 +314,16 @@ GDALVectorSetGeomTypeAlgorithm::CreateAlgLayer(OGRLayer &srcLayer)
 
 bool GDALVectorSetGeomTypeAlgorithm::RunStep(GDALPipelineStepRunContext &ctxt)
 {
+    if (!m_opts.m_auto && m_opts.m_type.empty() && !m_opts.m_multi &&
+        !m_opts.m_single && !m_opts.m_linear && !m_opts.m_curve &&
+        m_opts.m_dim.empty())
+    {
+        ReportError(CE_Failure, CPLE_AppDefined,
+                    "At least one of --auto, --geometry-type, --multi, "
+                    "--single, --linear, --curve or --dim must be specified");
+        return false;
+    }
+
     if (m_opts.m_auto &&
         (!m_opts.m_type.empty() || m_opts.m_multi || m_opts.m_single ||
          m_opts.m_linear || m_opts.m_curve || !m_opts.m_dim.empty()))

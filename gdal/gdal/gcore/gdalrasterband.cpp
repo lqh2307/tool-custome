@@ -4502,7 +4502,10 @@ CPLErr GDALRasterBand::GetHistogram(double dfMin, double dfMax, int nBuckets,
 
                 if (eDataType != GDT_Float16 && eDataType != GDT_Float32 &&
                     sNoDataValues.bGotNoDataValue &&
-                    ARE_REAL_EQUAL(dfValue, sNoDataValues.dfNoDataValue))
+                    (GDALDataTypeIsInteger(eDataType)
+                         ? dfValue == sNoDataValues.dfNoDataValue
+                         : ARE_REAL_EQUAL(dfValue,
+                                          sNoDataValues.dfNoDataValue)))
                     continue;
 
                 // Given that dfValue and dfMin are not NaN, and dfScale > 0 and
@@ -4771,7 +4774,10 @@ CPLErr GDALRasterBand::GetHistogram(double dfMin, double dfMax, int nBuckets,
 
                     if (eDataType != GDT_Float16 && eDataType != GDT_Float32 &&
                         sNoDataValues.bGotNoDataValue &&
-                        ARE_REAL_EQUAL(dfValue, sNoDataValues.dfNoDataValue))
+                        (GDALDataTypeIsInteger(eDataType)
+                             ? dfValue == sNoDataValues.dfNoDataValue
+                             : ARE_REAL_EQUAL(dfValue,
+                                              sNoDataValues.dfNoDataValue)))
                         continue;
 
                     // Given that dfValue and dfMin are not NaN, and dfScale > 0
@@ -6488,7 +6494,9 @@ static inline double GetPixelValue(GDALDataType eDataType, bool bSignedByte,
     }
 
     if (sNoDataValues.bGotNoDataValue &&
-        ARE_REAL_EQUAL(dfValue, sNoDataValues.dfNoDataValue))
+        (GDALDataTypeIsInteger(eDataType)
+             ? dfValue == sNoDataValues.dfNoDataValue
+             : ARE_REAL_EQUAL(dfValue, sNoDataValues.dfNoDataValue)))
     {
         bValid = false;
         return 0.0;
@@ -13403,7 +13411,7 @@ GDALComputedRasterBand pow(double constant, const GDALRasterBand &band)
 namespace gdal
 {
 
-/** Return a band whose each pixel value is the the corresponding pixel value
+/** Return a band whose each pixel value is the corresponding pixel value
  * in the input band raised to the power of the constant.
  *
  * The resulting band is lazy evaluated. A reference is taken on input
@@ -13426,7 +13434,7 @@ namespace gdal
 {
 
 #ifndef DOXYGEN_SKIP
-/** Return a band whose each pixel value is the the corresponding pixel value
+/** Return a band whose each pixel value is the corresponding pixel value
  * in the input band1 raised to the power of the corresponding pixel value
  * in the input band2
  *

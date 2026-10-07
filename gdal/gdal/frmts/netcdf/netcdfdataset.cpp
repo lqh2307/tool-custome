@@ -114,6 +114,9 @@ static CPLErr NCDFGetVarFullName(int nGroupId, int nVarId,
                                  bool bNC3Compat = true);
 static CPLErr NCDFGetRootGroup(int nStartGroupId, int *pnRootGroupId);
 
+static std::pair<int, int> ReadExtraDimDef(GDALDataset *poSrcDS,
+                                           const char *pszDimName);
+
 static CPLErr NCDFResolveVarFullName(int nStartGroupId, const char *pszVar,
                                      std::string &osFullName,
                                      bool bMandatory = false);
@@ -2823,7 +2826,7 @@ netCDFDataset::netCDFDataset()
 #endif
       cdfid(-1), nSubDatasets(0), bBottomUp(true), eFormat(NCDF_FORMAT_NONE),
       bIsGdalFile(false), bIsGdalCfFile(false), pszCFProjection(nullptr),
-      pszCFCoordinates(nullptr), nCFVersion(1.6), bSGSupport(false),
+      pszCFCoordinates(nullptr), bSGSupport(false),
       eMultipleLayerBehavior(SINGLE_LAYER), logCount(0), vcdf(this, cdfid),
       GeometryScribe(vcdf, this->generateLogName()),
       FieldScribe(vcdf, this->generateLogName()),
@@ -4209,7 +4212,8 @@ void netCDFDataset::SetProjectionFromVar(
                         tmpGT = gtFromAttributeNorthUp;
                         if (gtFromAttributeNorthUp.IsAxisAligned())
                         {
-                            poDS->bBottomUp = true;
+                            // Axis direction depends on whether it is GDAL-style CF file
+                            poDS->bBottomUp = bIsGdalCfFile;
                         }
                     }
                     else
@@ -5362,7 +5366,7 @@ CPLErr netCDFDataset::AddProjectionVars(bool bDefsOnly,
                                         GDALProgressFunc pfnProgress,
                                         void *pProgressData)
 {
-    if (nCFVersion >= 1.8)
+    if (nCFVersionMajor > 1 || (nCFVersionMajor == 1 && nCFVersionMinor >= 8))
         return CE_None;  // do nothing
 
     bool bWriteGridMapping = false;
@@ -6672,7 +6676,7 @@ void netCDFDataset::CreateSubDatasetList(int nGroupId)
 /*                           TestCapability()                           */
 /************************************************************************/
 
-int netCDFDataset::TestCapability(const char *pszCap) const
+bool netCDFDataset::TestCapability(const char *pszCap) const
 {
     if (EQUAL(pszCap, ODsCCreateLayer))
     {
@@ -8412,9 +8416,11 @@ GDALDataset *netCDFDataset::Open(GDALOpenInfo *poOpenInfo)
 
     // Figure out whether or not the listed dataset has support for simple
     // geometries (CF-1.8)
-    poDS->nCFVersion = nccfdriver::getCFVersion(cdfid);
+    nccfdriver::getCFVersion(cdfid, poDS->nCFVersionMajor,
+                             poDS->nCFVersionMinor);
     bool bHasSimpleGeometries = false;  // but not necessarily valid
-    if (poDS->nCFVersion >= 1.8)
+    if (poDS->nCFVersionMajor > 1 ||
+        (poDS->nCFVersionMajor == 1 && poDS->nCFVersionMinor >= 8))
     {
         bHasSimpleGeometries = poDS->DetectAndFillSGLayers(cdfid);
         if (bHasSimpleGeometries)
@@ -9262,7 +9268,15 @@ netCDFDataset *netCDFDataset::CreateLL(const char *pszFilename, int nXSize,
 
     // process options.
     poDS->aosCreationOptions = CSLDuplicate(papszOptions);
-    poDS->ProcessCreationOptions();
+    if (!poDS->ProcessCreationOptions())
+    {
+        CPLReleaseMutex(hNCMutex);  // Release mutex otherwise we'll
+        // deadlock with GDALDataset own
+        // mutex.
+        delete poDS;
+        CPLAcquireMutex(hNCMutex, 1000.0);
+        return nullptr;
+    }
 
     if (poDS->eMultipleLayerBehavior == SEPARATE_FILES)
     {
@@ -9622,15 +9636,42 @@ netCDFDataset::CreateCopy(const char *pszFilename, GDALDataset *poSrcDS,
     if (!pfnProgress(0.0, nullptr, pProgressData))
         return nullptr;
 
+    // Check for extra dimensions.
+    int nDim = 2;
+    CPLStringList aosExtraDimNames =
+        NCDFTokenizeArray(poSrcDS->GetMetadataItem("NETCDF_DIM_EXTRA", ""));
+
     // Same as in Create().
     CPLStringList aosOptions(CSLDuplicate(papszOptions));
-    if (aosOptions.FetchNameValue("FORMAT") == nullptr &&
-        (eDT == GDT_UInt16 || eDT == GDT_UInt32 || eDT == GDT_UInt64 ||
-         eDT == GDT_Int64))
+    if (aosOptions.FetchNameValue("FORMAT") == nullptr)
     {
-        CPLDebug("netCDF", "Selecting FORMAT=NC4 due to data type");
-        aosOptions.SetNameValue("FORMAT", "NC4");
+        if (eDT == GDT_UInt16 || eDT == GDT_UInt32 || eDT == GDT_UInt64 ||
+            eDT == GDT_Int64)
+        {
+            CPLDebug("netCDF", "Selecting FORMAT=NC4 due to data type");
+            aosOptions.SetNameValue("FORMAT", "NC4");
+        }
+        else if (!aosExtraDimNames.empty())
+        {
+            for (const auto &pszDimName : aosExtraDimNames)
+            {
+                const auto [nDimSize, nDimType] =
+                    ReadExtraDimDef(poSrcDS, pszDimName);
+                {
+                    if (nDimType > NC_DOUBLE)
+                    {
+                        CPLDebug("netCDF",
+                                 "Selecting FORMAT=NC4 due to data type of "
+                                 "extra dimension '%s'",
+                                 pszDimName);
+                        aosOptions.SetNameValue("FORMAT", "NC4");
+                        break;
+                    }
+                }
+            }
+        }
     }
+
     netCDFDataset *poDS = netCDFDataset::CreateLL(pszFilename, nXSize, nYSize,
                                                   nBands, aosOptions.List());
     if (!poDS)
@@ -9650,11 +9691,6 @@ netCDFDataset::CreateCopy(const char *pszFilename, GDALDataset *poSrcDS,
 
     pfnProgress(0.1, nullptr, pProgressData);
 
-    // Check for extra dimensions.
-    int nDim = 2;
-    CPLStringList aosExtraDimNames =
-        NCDFTokenizeArray(poSrcDS->GetMetadataItem("NETCDF_DIM_EXTRA", ""));
-
     if (!aosExtraDimNames.empty())
     {
         size_t nDimSizeTot = 1;
@@ -9662,12 +9698,8 @@ netCDFDataset::CreateCopy(const char *pszFilename, GDALDataset *poSrcDS,
         // for( int i=0; i<CSLCount(papszExtraDimNames ); i++ ) {
         for (int i = aosExtraDimNames.size() - 1; i >= 0; i--)
         {
-            char szTemp[NC_MAX_NAME + 32 + 1];
-            snprintf(szTemp, sizeof(szTemp), "NETCDF_DIM_%s_DEF",
-                     aosExtraDimNames[i]);
-            const CPLStringList aosExtraDimValues =
-                NCDFTokenizeArray(poSrcDS->GetMetadataItem(szTemp, ""));
-            const size_t nDimSize = atol(aosExtraDimValues[0]);
+            const auto [nDimSize, _] =
+                ReadExtraDimDef(poSrcDS, aosExtraDimNames[i]);
             nDimSizeTot *= nDimSize;
         }
         if (nDimSizeTot == (size_t)nBands)
@@ -10014,7 +10046,7 @@ netCDFDataset::CreateCopy(const char *pszFilename, GDALDataset *poSrcDS,
 
 // Note: some logic depends on bIsProjected and bIsGeoGraphic.
 // May not be known when Create() is called, see AddProjectionVars().
-void netCDFDataset::ProcessCreationOptions()
+bool netCDFDataset::ProcessCreationOptions()
 {
     const char *pszConfig = aosCreationOptions.FetchNameValue("CONFIG_FILE");
     if (pszConfig != nullptr)
@@ -10027,6 +10059,10 @@ void netCDFDataset::ProcessCreationOptions()
             {
                 aosCreationOptions.SetNameValue(osName, osValue);
             }
+        }
+        else
+        {
+            return false;
         }
     }
 
@@ -10055,7 +10091,7 @@ void netCDFDataset::ProcessCreationOptions()
         }
         else
         {
-            CPLError(CE_Failure, CPLE_NotSupported,
+            CPLError(CE_Warning, CPLE_NotSupported,
                      "FORMAT=%s in not supported, using the default NC format.",
                      pszValue);
         }
@@ -10083,7 +10119,7 @@ void netCDFDataset::ProcessCreationOptions()
         }
         else
         {
-            CPLError(CE_Failure, CPLE_NotSupported,
+            CPLError(CE_Warning, CPLE_NotSupported,
                      "COMPRESS=%s is not supported.", pszValue);
         }
     }
@@ -10159,6 +10195,8 @@ void netCDFDataset::ProcessCreationOptions()
 
     CPLDebug("GDAL_netCDF", "file options: format=%d compress=%d zlevel=%d",
              eFormat, eCompress, nZLevel);
+
+    return true;
 }
 
 int netCDFDataset::DefVarDeflate(int nVarId, bool bChunkingArg) const
@@ -12044,6 +12082,24 @@ static CPLErr NCDFGetRootGroup(int nStartGroupId, int *pnRootGroupId)
     }
 
     return CE_None;
+}
+
+// Read the size and type of an extra dimension
+static std::pair<int, int> ReadExtraDimDef(GDALDataset *poSrcDS,
+                                           const char *pszDimName)
+{
+    static char szTemp[NC_MAX_NAME + 32 + 1];
+    snprintf(szTemp, sizeof(szTemp), "NETCDF_DIM_%s_DEF", pszDimName);
+    const CPLStringList aosExtraDimValues =
+        NCDFTokenizeArray(poSrcDS->GetMetadataItem(szTemp, ""));
+    const int nDimSize =
+        aosExtraDimValues.empty() ? 0 : atoi(aosExtraDimValues[0]);
+
+    // nc_type is an enum in netcdf-3, needs casting.
+    const int nVarType = static_cast<nc_type>(
+        aosExtraDimValues.size() >= 2 ? atol(aosExtraDimValues[1]) : 0);
+
+    return {nDimSize, nVarType};
 }
 
 // Implementation of NCDFResolveVar/Att.

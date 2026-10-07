@@ -717,7 +717,7 @@ OGRErr OGRGeometry::transformTo(const OGRSpatialReference *poSR)
 
     const OGRErr eErr = transform(poCT);
 
-    delete poCT;
+    OGRCoordinateTransformation::DestroyCT(poCT);
 
     return eErr;
 }
@@ -3433,7 +3433,7 @@ class GEOSWarningSilencer
  */
 static std::unique_ptr<OGRGeometry> repairForGEOS(const OGRGeometry *poGeom)
 {
-#if GEOS_VERSION_MAJOR >= 3 ||                                                 \
+#if GEOS_VERSION_MAJOR > 3 ||                                                  \
     (GEOS_VERSION_MINOR == 3 && GEOS_VERSION_MINOR >= 10)
     static constexpr int MIN_RING_POINTS = 3;
 #else
@@ -5648,7 +5648,9 @@ OGRGeometryH OGR_G_UnionCascaded(OGRGeometryH hThis)
  * @since GDAL 3.7
  */
 
-OGRGeometry *OGRGeometry::UnaryUnion() const
+OGRGeometry *
+OGRGeometry::UnaryUnion(UNUSED_IF_NO_GEOS GDALProgressFunc pfnProgress,
+                        UNUSED_IF_NO_GEOS void *pProgressData) const
 
 {
 #ifndef HAVE_GEOS
@@ -5672,6 +5674,8 @@ OGRGeometry *OGRGeometry::UnaryUnion() const
     GEOSGeom hThisGeosGeom = exportToGEOS(hGEOSCtxt);
     if (hThisGeosGeom != nullptr)
     {
+        GDALGEOSProgressReporter oReporter(hGEOSCtxt, pfnProgress,
+                                           pProgressData);
         GEOSGeom hGeosProduct = GEOSUnaryUnion_r(hGEOSCtxt, hThisGeosGeom);
         GEOSGeom_destroy_r(hGEOSCtxt, hThisGeosGeom);
 
@@ -7626,6 +7630,18 @@ int OGRPreparedGeometryIntersects(const OGRPreparedGeometryH hPreparedGeom,
         return FALSE;
     }
 
+#if GEOS_VERSION_MAJOR > 3 ||                                                  \
+    (GEOS_VERSION_MAJOR == 3 && GEOS_VERSION_MINOR >= 12)
+    if (wkbFlatten(OGR_G_GetGeometryType(hOtherGeom)) == wkbPoint)
+    {
+        const OGRPoint *poPoint = cpl::down_cast<const OGRPoint *>(
+            OGRGeometry::FromHandle(hOtherGeom));
+        return 1 ==
+               GEOSPreparedIntersectsXY_r(hPreparedGeom->hGEOSCtxt,
+                                          hPreparedGeom->poPreparedGEOSGeom,
+                                          poPoint->getX(), poPoint->getY());
+    }
+#endif
     GEOSGeom hGEOSOtherGeom =
         poOtherGeom->exportToGEOS(hPreparedGeom->hGEOSCtxt);
     if (hGEOSOtherGeom == nullptr)
@@ -7664,6 +7680,17 @@ int OGRPreparedGeometryContains(const OGRPreparedGeometryH hPreparedGeom,
         return FALSE;
     }
 
+#if GEOS_VERSION_MAJOR > 3 ||                                                  \
+    (GEOS_VERSION_MAJOR == 3 && GEOS_VERSION_MINOR >= 12)
+    if (wkbFlatten(OGR_G_GetGeometryType(hOtherGeom)) == wkbPoint)
+    {
+        const OGRPoint *poPoint = cpl::down_cast<const OGRPoint *>(
+            OGRGeometry::FromHandle(hOtherGeom));
+        return 1 == GEOSPreparedContainsXY_r(hPreparedGeom->hGEOSCtxt,
+                                             hPreparedGeom->poPreparedGEOSGeom,
+                                             poPoint->getX(), poPoint->getY());
+    }
+#endif
     GEOSGeom hGEOSOtherGeom =
         poOtherGeom->exportToGEOS(hPreparedGeom->hGEOSCtxt);
     if (hGEOSOtherGeom == nullptr)
@@ -8287,9 +8314,9 @@ int OGR_GT_IsSubClassOf(OGRwkbGeometryType eType, OGRwkbGeometryType eSuperType)
  *
  * Handled conversions are : wkbNone->wkbNone, wkbPoint -> wkbMultiPoint,
  * wkbLineString->wkbMultiLineString,
- * wkbPolygon/wkbTriangle/wkbPolyhedralSurface/wkbTIN->wkbMultiPolygon,
+ * wkbPolygon/wkbTriangle->wkbMultiPolygon,
  * wkbCircularString->wkbMultiCurve, wkbCompoundCurve->wkbMultiCurve,
- * wkbCurvePolygon->wkbMultiSurface.
+ * wkbCurvePolygon/wkbPolyhedralSurface/wkbTIN->wkbMultiSurface.
  * In other cases, wkbUnknown is returned
  *
  * Passed Z, M, ZM flag is preserved.
@@ -8319,7 +8346,7 @@ OGRwkbGeometryType OGR_GT_GetCollection(OGRwkbGeometryType eType)
         eType = wkbMultiPolygon;
 
     else if (eFGType == wkbTriangle)
-        eType = wkbTIN;
+        eType = wkbMultiPolygon;
 
     else if (OGR_GT_IsCurve(eFGType))
         eType = wkbMultiCurve;
@@ -8356,7 +8383,7 @@ OGRwkbGeometryType OGR_GT_GetCollection(OGRwkbGeometryType eType)
  *
  * @param eType Input geometry type
  *
- * @return the the non-collection type that be contained in the passed geometry
+ * @return the non-collection type that be contained in the passed geometry
  * type or wkbUnknown
  *
  * @since GDAL 3.11
@@ -9380,3 +9407,76 @@ IOGRGeometryVisitor::~IOGRGeometryVisitor() = default;
 /************************************************************************/
 
 IOGRConstGeometryVisitor::~IOGRConstGeometryVisitor() = default;
+
+/************************************************************************/
+/*                      GDALGEOSProgressReporter()                      */
+/************************************************************************/
+
+#if HAVE_GEOS
+GDALGEOSProgressReporter::GDALGEOSProgressReporter(
+    GEOSContextHandle_t hGEOSCtxt, GDALProgressFunc pfnProgress,
+    void *pProgressData)
+    : m_context(hGEOSCtxt), m_userData{
+                                pfnProgress,
+                                pProgressData,
+                            }
+{
+#if GEOS_VERSION_MAJOR > 3 ||                                                  \
+    (GEOS_VERSION_MAJOR == 3 && GEOS_VERSION_MINOR >= 15)
+    GEOSContext_setProgressCallback_r(m_context, GDALGEOSProgress, &m_userData);
+    // Although GEOS accepts interrupt callbacks starting with version 3.14,
+    // GDAL has no way to request an interrupt in the absence of a progress
+    // update (available since GEOS 3.15 only.)
+    GEOSContext_setInterruptCallback_r(m_context, GDALGEOSCheckInterrupt,
+                                       &m_userData);
+#endif
+}
+
+GDALGEOSProgressReporter::~GDALGEOSProgressReporter()
+{
+#if GEOS_VERSION_MAJOR > 3 ||                                                  \
+    (GEOS_VERSION_MAJOR == 3 && GEOS_VERSION_MINOR >= 15)
+    GEOSContext_setProgressCallback_r(m_context, nullptr, nullptr);
+    GEOSContext_setInterruptCallback_r(m_context, nullptr, nullptr);
+#endif
+}
+#endif
+
+/************************************************************************/
+/*                          GDALGEOSProgress()                          */
+/************************************************************************/
+
+#if HAVE_GEOS
+/** Callback invoked by GEOS to report progress. Progress will be relayed on
+ *  to a GDALProgressFunc. If the GDALProgressFunc returns false, a GEOS
+ *  interrupt will be requested at the next opportunity. */
+void GDALGEOSProgress(double frac, const char *message, void *userData)
+{
+    GDALGEOSProgressUserData *pData =
+        static_cast<GDALGEOSProgressUserData *>(userData);
+    if (!pData->m_pfnProgress)
+    {
+        return;
+    }
+
+    if (!pData->m_pfnProgress(frac, message, pData->m_pProgressData))
+    {
+        pData->m_bRequestedInterrupt = true;
+    };
+}
+#endif
+
+/************************************************************************/
+/*                       GDALGEOSCheckInterrupt()                       */
+/************************************************************************/
+
+#if HAVE_GEOS
+/** Callback invoked by GEOS to check whether the a previous invocation of a
+ *  GDALProgressFunc has requested processing be interrupted. */
+int GDALGEOSCheckInterrupt(void *userData)
+{
+    GDALGEOSProgressUserData *pData =
+        static_cast<GDALGEOSProgressUserData *>(userData);
+    return pData->m_bRequestedInterrupt;
+}
+#endif

@@ -1,3 +1,0 @@
-GetFeatureInfo results:
-
-  Search returned no results.

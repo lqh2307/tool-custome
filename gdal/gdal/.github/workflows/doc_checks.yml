@@ -24,7 +24,7 @@ jobs:
     container: ubuntu:24.04
 
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - name: Setup environment
@@ -69,17 +69,6 @@ jobs:
           python3 --version
           sphinx-build --version
           python3 -m pip list --not-required --format=columns
-
-    - name: Lint .rst files
-      shell: bash -l {0}
-      run: |
-        if find . -name '*.rst' | xargs grep -P '\t'; then echo 'Tabs are bad, please use four spaces in .rst files.'; false; fi
-        if find . -name '*.rst' | xargs grep "\.\.versionadded"; then echo 'Wrong annotation. Should be .. versionadded'; false; fi
-        if find . -name '*.rst' | xargs grep "\.\.note"; then echo 'Wrong annotation. Should be .. note'; false; fi
-        if find . -name '*.rst' | xargs grep "\.\.warning"; then echo 'Wrong annotation. Should be .. warning'; false; fi
-        if find . -name '*.rst' | xargs grep "\.\.codeblock"; then echo 'Wrong annotation. Should be .. codeblock'; false; fi
-        if find . -name '*.rst' | xargs grep -P "\r$"; then echo 'Windows line breaks detected'; false; fi
-      working-directory: ./doc
 
     - name: Doxygen
       shell: bash -l {0}

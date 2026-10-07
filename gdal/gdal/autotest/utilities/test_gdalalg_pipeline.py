@@ -22,6 +22,12 @@ import test_cli_utilities
 from osgeo import gdal, ogr
 
 
+@pytest.fixture(scope="module", autouse=True)
+def set_cpl_tmpdir(tmp_path_factory):
+    with gdaltest.set_cpl_tmpdir(tmp_path_factory, "test_gdalalg_pipeline"):
+        yield
+
+
 def get_pipeline_alg():
     return gdal.GetGlobalAlgorithmRegistry()["pipeline"]
 
@@ -930,7 +936,7 @@ def test_gdalalg_pipeline_nested_errors():
         )
 
     with pytest.raises(
-        Exception, match="'not_existing' is a unknown sub-algorithm of 'overview'"
+        Exception, match="'not_existing' is an unknown sub-algorithm of 'overview'"
     ):
         gdal.Run(
             "pipeline",
@@ -1126,6 +1132,14 @@ def test_gdalalg_pipeline_invalid_last_step(gdal_path):
     )
 
     assert "Last step should be 'write', " in err
+    # Ensure there are no duplicated steps
+    pos = err.find("Last step should be ")
+    err = err[pos + len("Last step should be ") :]
+    err = err.replace("\r\n", "\n")
+    err = err[0 : err.find("\n")]
+    steps = err.replace(" or ", ", ")
+    steps = steps.split(", ")
+    assert len(steps) == len(set(steps))
 
 
 def test_gdalalg_pipeline_tee_output_string(tmp_vsimem):

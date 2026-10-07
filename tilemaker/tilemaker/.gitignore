@@ -1,5 +1,6 @@
 # object files created during the build and the output binary itself
 *.o
+*.d
 tilemaker
 tilemaker-server
 build/
@@ -18,6 +19,7 @@ __pycache__/
 # protocol buffers generated headers
 include/osmformat.pb.h
 include/vector_tile.pb.h
+src/config_schema.h
 
 # downloaded data
 coastline

@@ -1010,7 +1010,7 @@ GDALDataset *ILWISDataset::Create(const char *pszFilename, int nXSize,
 
         if (fp == nullptr)
         {
-            CPLError(CE_Failure, CPLE_OpenFailed, "Unable to create file %s.\n",
+            CPLError(CE_Failure, CPLE_OpenFailed, "Unable to create file %s.",
                      osDataName.c_str());
             return nullptr;
         }
@@ -1200,7 +1200,7 @@ GDALDataset *ILWISDataset::CreateCopy(const char *pszFilename,
         if (fpData == nullptr)
         {
             CPLError(CE_Failure, CPLE_OpenFailed,
-                     "Attempt to create file `%s' failed.\n", pszFilename);
+                     "Attempt to create file `%s' failed.", pszFilename);
             return nullptr;
         }
 
@@ -1658,11 +1658,11 @@ CPLErr ILWISRasterBand::IReadBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
             break;
         case stFloat:
             for (int iCol = 0; iCol < nBlockXSize; iCol++)
-                ((float *)pImage)[iCol] = static_cast<float *>(pData)[iCol];
+                SetValue(pImage, iCol, static_cast<float *>(pData)[iCol]);
             break;
         case stReal:
             for (int iCol = 0; iCol < nBlockXSize; iCol++)
-                ((double *)pImage)[iCol] = static_cast<double *>(pData)[iCol];
+                SetValue(pImage, iCol, static_cast<double *>(pData)[iCol]);
             break;
         default:
             CPLAssert(false);

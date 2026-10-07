@@ -1,2 +1,0 @@
-CTY_NAME,CTY_FIPS
-Polk,119

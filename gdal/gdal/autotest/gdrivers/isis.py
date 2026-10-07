@@ -470,6 +470,7 @@ def test_isis_16():
                 [gdal.GDT_Int16, 65525, -32768, []],
                 [gdal.GDT_UInt16, 0, 0, []],
                 [gdal.GDT_Float32, 65534, -3.4028226550889045e38, []],
+                [gdal.GDT_Float64, 65534, -1.797693134862315e308, []],
             ]:
 
                 ds = gdal.GetDriverByName("ISIS3").Create(
@@ -913,7 +914,7 @@ def test_isis_23():
     ds = None
     gdal.GetDriverByName("ISIS3").Delete("/vsimem/isis_tmp.lbl")
 
-    for dt in [gdal.GDT_Int16, gdal.GDT_UInt16, gdal.GDT_Float32]:
+    for dt in [gdal.GDT_Int16, gdal.GDT_UInt16, gdal.GDT_Float32, gdal.GDT_Float64]:
         mem_ds = gdal.Translate("", "data/byte.tif", format="MEM", outputType=dt)
         mem_ds.SetProjection("")
         mem_ds.SetGeoTransform([0, 1, 0, 0, 0, 1])
@@ -2392,3 +2393,98 @@ End
             "_type": "group",
             "Test/with/slash:and:colon": 1,
         }
+
+
+def _open_isis3_projstr(tmp_vsimem, mapping):
+    # Write a minimal detached ISIS3 label whose Mapping group is 'mapping',
+    # plus the tiny raw image it points at, and open it.
+    gdal.FileFromMemBuffer(
+        tmp_vsimem / "projstr.lbl",
+        f"""Object = IsisCube
+  Object = Core
+    StartByte = 1
+    ^Core     = projstr.cub
+    Format    = BandSequential
+    Group = Dimensions
+      Samples = 2
+      Lines   = 2
+      Bands   = 1
+    End_Group
+    Group = Pixels
+      Type       = UnsignedByte
+      ByteOrder  = Lsb
+      Base       = 0.0
+      Multiplier = 1.0
+    End_Group
+  End_Object
+  Group = Mapping
+{mapping}
+  End_Group
+End_Object
+End
+""",
+    )
+    gdal.FileFromMemBuffer(tmp_vsimem / "projstr.cub", b"\x00" * 4)
+    return gdal.Open(tmp_vsimem / "projstr.lbl")
+
+
+def test_isis3_projstr_read(tmp_vsimem):
+
+    # The ISIS IProj projection (ProjectionName = IProj) carries its
+    # definition in a ProjStr PROJ string, which may span two lines.
+    with _open_isis3_projstr(
+        tmp_vsimem,
+        """    ProjectionName   = IProj
+    TargetName       = Mars
+    PixelResolution  = 10.0 <meters/pixel>
+    UpperLeftCornerX = -1000.0 <meters>
+    UpperLeftCornerY = 2000.0 <meters>
+    ProjStr          = "+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=0 +x_0=0 +y_0=0
+                        +a=3396190 +b=3396190 +units=m +no_defs +type=crs" """,
+    ) as ds:
+        srs = ds.GetSpatialRef()
+        assert srs is not None
+        assert srs.IsProjected()
+        assert srs.GetSemiMajor() == pytest.approx(3396190)
+        assert "+proj=eqc" in srs.ExportToProj4()
+        assert ds.GetGeoTransform() == pytest.approx(
+            [-1000.0, 10.0, 0.0, 2000.0, 0.0, -10.0]
+        )
+
+
+def test_isis3_projstr_takes_precedence(tmp_vsimem):
+
+    # When both a named projection and ProjStr are present, ProjStr wins.
+    with _open_isis3_projstr(
+        tmp_vsimem,
+        """    ProjectionName   = Equirectangular
+    TargetName       = Mars
+    EquatorialRadius = 3396190.0 <meters>
+    PolarRadius      = 3396190.0 <meters>
+    CenterLongitude  = 0.0
+    CenterLatitude   = 0.0
+    PixelResolution  = 10.0 <meters/pixel>
+    UpperLeftCornerX = -1000.0 <meters>
+    UpperLeftCornerY = 2000.0 <meters>
+    ProjStr          = "+proj=stere +lat_0=90 +lon_0=0 +k=1 +x_0=0 +y_0=0
+                        +a=3396190 +b=3396190 +units=m +no_defs +type=crs" """,
+    ) as ds:
+        assert "+proj=stere" in ds.GetSpatialRef().ExportToProj4()
+
+
+def test_isis3_projstr_invalid(tmp_vsimem):
+
+    # An unparsable ProjStr should warn and leave no spatial reference,
+    # rather than crash.
+    with gdal.quiet_errors():
+        ds = _open_isis3_projstr(
+            tmp_vsimem,
+            """    ProjectionName   = IProj
+    TargetName       = Mars
+    PixelResolution  = 10.0 <meters/pixel>
+    UpperLeftCornerX = -1000.0 <meters>
+    UpperLeftCornerY = 2000.0 <meters>
+    ProjStr          = "+proj=no_such_projection +a=3396190" """,
+        )
+    assert ds is not None
+    assert ds.GetSpatialRef() is None

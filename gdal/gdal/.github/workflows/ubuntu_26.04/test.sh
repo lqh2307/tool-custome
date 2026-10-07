@@ -14,10 +14,6 @@ cat found_formats.txt
 cat ../.github/workflows/ubuntu_26.04/expected_gdalinfo_formats.txt ../.github/workflows/ubuntu_26.04/expected_ogrinfo_formats.txt > expected_formats.txt
 diff -u expected_formats.txt found_formats.txt
 
-# Check that we don't introduce unexpected argument names in algorithms
-../scripts/collect_arg_names.sh > arg_names.txt
-diff -u arg_names.txt ../.github/workflows/ubuntu_26.04/reference_arg_names.txt >/dev/null || (echo "Unexpected argument names found in algorithms. If intended, update .github/workflows/ubuntu_26.04/reference_arg_names.txt:"; diff -u arg_names.txt ../.github/workflows/ubuntu_26.04/reference_arg_names.txt; /bin/false)
-
 # Test development launcher script
 gdal_edit --version
 
@@ -45,6 +41,10 @@ AZURE_STORAGE_CONNECTION_STRING=${AZURITE_STORAGE_CONNECTION_STRING} python3 -c 
 # MongoDB v3
 (cd autotest && MONGODBV3_TEST_PORT=27018 MONGODBV3_TEST_HOST=$IP $PYTEST ogr/ogr_mongodbv3.py)
 
-# (cd autotest && OGR_MSSQL_CONNECTION_STRING="MSSQL:server=$IP;database=TestDB;driver=ODBC Driver 17 for SQL Server;UID=SA;PWD=DummyPassw0rd" $PYTEST ogr/ogr_mssqlspatial.py)
+# MSSQL
+MSSQL_CONNECTION_STRING="MSSQL:server=$IP;database=TestDB;driver=ODBC Driver 18 for SQL Server;UID=SA;PWD=DummyPassw0rd;TrustServerCertificate=yes;"
+(cd autotest && OGR_MSSQL_CONNECTION_STRING="${MSSQL_CONNECTION_STRING}" $PYTEST ogr/ogr_mssqlspatial.py)
+(cd autotest && OGR_MSSQL_CONNECTION_STRING="${MSSQL_CONNECTION_STRING}" $PYTEST utilities/test_gdalalg_vector_update.py)
 
+# Full test suite
 (cd autotest && $PYTEST)
