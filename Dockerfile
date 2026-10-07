@@ -8,7 +8,6 @@ ARG BUILD_NUM_PROCESS
 ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
-	&& apt-get upgrade -y \
 	&& apt-get install -y \
 		build-essential \
 		cmake \
@@ -46,15 +45,14 @@ ARG BUILD_NUM_PROCESS
 ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
-	&& apt-get upgrade -y \
-	&& apt-get install -y \
+	&& apt-get install -y --no-install-recommends \
 		build-essential \
+		ca-certificates \
 		cmake \
 		swig \
 		autoconf \
 		automake \
 		curl \
-		ca-certificates \
 		python3-dev \
 		python3-pip \
 		python3-numpy \
@@ -83,7 +81,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libhdf5-serial-dev \
 		libxml2-dev \
 		libcairo2-dev \
-		libpcre3-dev \
+		libpcre2-dev \
 		libkml-dev \
 		libheif-dev \
 		libavif-dev \
@@ -96,7 +94,13 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libaec-dev \
 		liblzma-dev \
 		libfreexl-dev \
-		openjdk-21-jdk \
+		libcfitsio-dev \
+		unixodbc-dev \
+		libmariadb-dev \
+		libcrypto++-dev \
+		libfyba-dev \
+		libopenexr-dev \
+		libarmadillo-dev \
 	&& curl --retry 3 --retry-all-errors --retry-delay 3 -LO -fsS \
 		https://github.com/rouault/libecwj2-3.3-builds/releases/download/v1/install-libecwj2-3.3-ubuntu-20.04.tar.gz \
 	&& tar xzf install-libecwj2-3.3-ubuntu-20.04.tar.gz -C / \
@@ -118,6 +122,12 @@ RUN cd ./gdal \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_RPATH='$ORIGIN/../lib' \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX_DIR}/gdal \
+		-DBUILD_TESTING=OFF \
+		-DBUILD_PYTHON_BINDINGS=ON \
+		-DGDAL_ENABLE_PLUGINS=ON \
+		-DGDAL_USE_TIFF_INTERNAL=ON \
+		-DGDAL_USE_GEOTIFF_INTERNAL=ON \
+		-DGDAL_USE_EXPRTK=ON \
 		-DGDAL_USE_ECW=ON \
 		-DECW_ROOT=/opt/libecwj2-3.3 \
 	&& cmake --build . --parallel ${BUILD_NUM_PROCESS:-$(nproc)} \
@@ -134,7 +144,6 @@ ARG BUILD_NUM_PROCESS
 ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
-	&& apt-get upgrade -y \
 	&& apt-get install -y \
 		build-essential \
 		cmake \
@@ -170,7 +179,7 @@ FROM ${TARGET_IMAGE} AS final
 ARG PREFIX_DIR=/usr/local/opt
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
-	&& apt-get install -y \
+	&& apt-get install -y --no-install-recommends \
 		python3 \
 		python3-pip \
 		python3-venv \
@@ -211,7 +220,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libpq5 \
 		libopenjp2-7 \
 		libmuparser2v5 \
-		libtcmalloc-minimal4 \
 		libhdf4-0-alt \
 		libhdf5-103-1 \
 		libxml2 \
@@ -232,7 +240,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libaec0 \
 		liblzma5 \
 		libfreexl1 \
-		openjdk-21-jre \
 		zip \
 		unzip \
 		tar \
@@ -255,8 +262,10 @@ COPY --from=osmium-tool-builder ${PREFIX_DIR} ${PREFIX_DIR}
 COPY ./scripts ${PREFIX_DIR}/scripts
 
 ENV PATH=${PREFIX_DIR}/venv/bin:${PREFIX_DIR}/tilemaker/bin:${PREFIX_DIR}/gdal/bin:${PREFIX_DIR}/gdal/local/bin:${PREFIX_DIR}/osmium-tool/bin:${PREFIX_DIR}/scripts:${PATH}
-ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib
-ENV PYTHONPATH=${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages
+ENV LD_LIBRARY_PATH=${PREFIX_DIR}/gdal/lib:${LD_LIBRARY_PATH}
+ENV GDAL_DATA=${PREFIX_DIR}/gdal/share/gdal
+ENV PROJ_DATA=${PREFIX_DIR}/gdal/share/proj
+ENV PYTHONPATH=${PREFIX_DIR}/gdal/lib/python3.12/site-packages:${PREFIX_DIR}/gdal/local/lib/python3.12/dist-packages:${PREFIX_DIR}/venv/lib/python3.12/site-packages:${PYTHONPATH}
 
 VOLUME /data
 
