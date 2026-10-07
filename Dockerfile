@@ -186,6 +186,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		libosmium2-dev \
 		zlib1g \
 		osmosis \
+		osm2pgsql \
 		libcurl4 \
 		libpython3.12 \
 		libgeos3.12.1 \
