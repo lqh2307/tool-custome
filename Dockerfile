@@ -238,7 +238,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
 		p7zip-full \
 		rar \
 	&& python3 -m venv ${PREFIX_DIR}/venv \
-	&& ${PREFIX_DIR}/venv/bin/pip install --no-cache-dir Pillow rasterio mapbox-vector-tile \
+	&& ${PREFIX_DIR}/venv/bin/pip install --no-cache-dir "numpy<2" Pillow rasterio mapbox-vector-tile \
 	&& apt-get -y --purge autoremove \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/* \
